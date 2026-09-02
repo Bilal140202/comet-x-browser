@@ -15,8 +15,9 @@ val ksPropsFile = File(keystoreDir, "keystore.properties")
 
 if (!keystoreFile.exists()) {
     keystoreDir.mkdirs()
+    val charset = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
     val pass = SecureRandom().let { rnd ->
-        (1..24).map { "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"[rnd.nextInt(56)] }.joinToString("")
+        (1..24).map { charset[rnd.nextInt(charset.length)] }.joinToString("")
     }
     ksPropsFile.writeText("storePassword=$pass\nkeyPassword=$pass\nkeyAlias=cometx\n")
     val cmd = arrayOf(
@@ -39,8 +40,8 @@ android {
         applicationId = "com.cometx.browser"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     signingConfigs {

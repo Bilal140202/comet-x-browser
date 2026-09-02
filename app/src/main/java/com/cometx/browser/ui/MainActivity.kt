@@ -23,12 +23,14 @@ import android.widget.TextView
 import android.widget.Toast
 import com.cometx.browser.CometApp
 import com.cometx.browser.R
+import com.cometx.browser.ai.CustomOpenAIProvider
 import com.cometx.browser.ai.GroqProvider
 import com.cometx.browser.ai.HuggingFaceProvider
 import com.cometx.browser.ai.ModelRouter
 import com.cometx.browser.ai.OpenAICompatibleProvider
 import com.cometx.browser.ai.OpenRouterProvider
 import com.cometx.browser.ai.SettingsRepository
+import com.cometx.browser.ai.UrlNormalizer
 import com.cometx.browser.automation.ActionExecutor
 import com.cometx.browser.automation.LocalTestServer
 import com.cometx.browser.engine.AgentEngine
@@ -78,8 +80,15 @@ class MainActivity : Activity() {
             "groq" to GroqProvider { settings.apiKey("groq") },
             "openrouter" to OpenRouterProvider { settings.apiKey("openrouter") },
             "huggingface" to HuggingFaceProvider { settings.apiKey("huggingface") },
-            "custom" to CustomProvider { settings.apiKey("custom") }
+            "custom" to CustomOpenAIProvider(
+                keyProvider = { settings.apiKey("custom") },
+                readyCheck = { !settings.apiKey("custom").isNullOrBlank() || !settings.baseUrl("custom").isNullOrBlank() }
+            )
         )
+        // apply user-saved base URLs (self-run endpoints) — previously silently ignored
+        for ((pid, prov) in providers) {
+            settings.baseUrl(pid)?.let { prov.setBaseUrl(UrlNormalizer.normalize(it)) }
+        }
         router = ModelRouter(settings, providers)
 
         browser = BrowserController(this)
@@ -130,10 +139,6 @@ class MainActivity : Activity() {
         tabs.newTab(startUrl)
         memory.lastBrowserState()?.let { (u, _) -> if (startUrl == settings.homepage() && u.isNotBlank()) { /* restore hint only */ } }
     }
-
-    private class CustomProvider(keyProvider: () -> String?) : OpenAICompatibleProvider(
-        id = "custom", displayName = "Custom", defaultBaseUrl = "https://api.openai.com/v1", keyProvider = keyProvider
-    )
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

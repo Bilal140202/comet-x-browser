@@ -25,11 +25,26 @@
 ## Quick start
 
 1. Install the APK (release artifact or `./gradlew assembleDebug`).
-2. Open **Settings → AI Providers**, paste a key (Groq recommended; any OpenAI-compatible provider works), pick the active provider.
+2. Open **Settings → AI Providers**, paste a key, press **Save**, then **Test**. Defaults are preconfigured — a key alone works. Enable extra providers to build a fallback chain (ordered with ▲/▼); if one fails, the next serves the request automatically.
 3. Browse somewhere, tap **Ask Agent**, describe the task ("find the cheapest hotel in Ahmedabad for Friday").
 4. Watch the log; use **Take Control** whenever you want the wheel — logins, CAPTCHAs, payments, judgment calls — then **Resume**.
 
 Build details: [docs/development/BUILD.md](docs/development/BUILD.md).
+
+## Changelog
+
+### v1.1.0
+- **Explicit Save per provider** — fields no longer persist invisibly on focus loss; a dirty-state indicator and Save ✓ toast make state obvious
+- **Test button per provider** — real two-step connectivity check (model catalog + live `pong` completion) with latency; result badge persisted (✓ Working / ✗ Failed)
+- **Model selection rebuilt** — per-role dropdowns: `Default (recommended)` → works with a key alone, live-fetched catalog (`Fetch models`), and `Custom…` manual entry; replaces five raw text boxes
+- **User-ordered fallback chain** — replace single "active provider" with enabled-toggle + priority ordering (▲/▼); ModelRouter walks the chain and fails over automatically
+- **Self-run URL normalization** — `localhost:11434` → `http://localhost:11434/v1` with a live "will be saved as" hint; saved base URLs are now actually applied at runtime (previously silently ignored — the reported "URL seems off" bug)
+- Fixed random build failure in release-keystore generation (`nextInt` off-by-two)
+- 86 unit tests passing (incl. new `ChainAndUrlTest`)
+
+### v1.0.0
+- Initial release: real WebView browser + autonomous agent loop + hybrid perception + multi-provider routing + human takeover + challenge detection + skills + memory + local red-team test server.
+
 
 ## Architecture in one line
 
