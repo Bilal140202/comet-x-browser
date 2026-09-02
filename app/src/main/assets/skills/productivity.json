@@ -1,0 +1,11 @@
+{
+  "id": "productivity",
+  "name": "Productivity",
+  "icon": "⚙",
+  "keywords": ["email", "mail", "calendar", "document", "draft", "reply", "schedule"],
+  "goal_hint": "Assist with the requested productivity task inside the user's authenticated session.",
+  "strategy": ["Navigate to the service", "Use the existing session (never ask for passwords in chat)", "Prepare drafts", "Wait for confirmation to send"],
+  "verification": "Drafts prepared and shown; nothing sent or deleted without explicit user approval.",
+  "failure_handling": "MFA or verification → ask_user. Ambiguous recipient or content → ask_user.",
+  "prompt_extra": "Never send messages, delete data or change settings without explicit confirmation via ask_user."
+}

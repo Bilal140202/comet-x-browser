@@ -1,0 +1,11 @@
+{
+  "id": "shopping",
+  "name": "Shopping",
+  "icon": "🛍",
+  "keywords": ["buy", "price", "prices", "shop", "order", "product", "cheapest", "deal", "discount"],
+  "goal_hint": "Find the best product and price for the user. Present options; never transact.",
+  "strategy": ["Search the product", "Sort or filter by price and rating", "Open the top 2-3 results", "Extract price, seller, availability"],
+  "verification": "Price verified with currency and units; seller and stock status noted; at least two options compared.",
+  "failure_handling": "If a page requires login or payment, ask_user. If out of stock, note it and continue with alternatives.",
+  "prompt_extra": "NEVER complete a purchase. Stop at the confirmation step and use ask_user to let the human decide."
+}

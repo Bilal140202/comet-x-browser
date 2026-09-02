@@ -1,0 +1,11 @@
+{
+  "id": "extraction",
+  "name": "Extraction",
+  "icon": "🗂",
+  "keywords": ["collect", "extract", "table", "scrape", "list", "gather", "compile"],
+  "goal_hint": "Collect the requested information from pages into clean structured output.",
+  "strategy": ["Identify the repeating structure", "Extract row by row", "For lazy pages scroll before extracting", "Output as a table with consistent columns"],
+  "verification": "All requested rows collected; columns consistent; counts match the page.",
+  "failure_handling": "If the page paginates, follow pagination up to a reasonable limit; if blocked, note it.",
+  "prompt_extra": "Respect the site: no rapid-fire scraping; extract at a human-like pace."
+}

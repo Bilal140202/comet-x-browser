@@ -1,0 +1,11 @@
+{
+  "id": "downloads",
+  "name": "Downloads",
+  "icon": "⬇",
+  "keywords": ["download", "save file", "get the file", "export"],
+  "goal_hint": "Locate and download the requested file via the browser's download manager.",
+  "strategy": ["Find the download link", "Check the file type", "Executable or archive types require user confirmation", "Trigger the download"],
+  "verification": "Download actually started (browser download notification); filename and type reported.",
+  "failure_handling": "If the link requires login, ask_user; if the file type is risky, ask_user.",
+  "prompt_extra": "Never auto-download executable files (.exe, .apk, .bat, .sh, .jar)."
+}

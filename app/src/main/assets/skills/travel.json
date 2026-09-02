@@ -1,0 +1,11 @@
+{
+  "id": "travel",
+  "name": "Travel",
+  "icon": "✈",
+  "keywords": ["hotel", "hotels", "flight", "flights", "travel", "book", "booking", "train", "bus", "trip", "stay"],
+  "goal_hint": "Find travel options matching the user's location, dates and budget constraints.",
+  "strategy": ["Search with location and date", "Apply price sorting or filters", "Compare top 3 options", "Extract names, prices, ratings"],
+  "verification": "Dates, location and price extracted verbatim from the page; currency explicit.",
+  "failure_handling": "If results are empty, widen dates or area once; if verification appears, ask_user; never book.",
+  "prompt_extra": "NEVER book, reserve or pay. Present the best options and stop at the confirmation step."
+}

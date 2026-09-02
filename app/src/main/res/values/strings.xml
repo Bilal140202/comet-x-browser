@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Comet-X</string>
+    <string name="settings_title">Settings</string>
+    <string name="url_hint">Search or enter URL</string>
+    <string name="ask_agent">Ask Agent</string>
+</resources>

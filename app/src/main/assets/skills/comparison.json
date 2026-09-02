@@ -1,0 +1,11 @@
+{
+  "id": "comparison",
+  "name": "Comparison",
+  "icon": "📊",
+  "keywords": ["compare", "comparison", "versus", "vs", "which is better", "difference"],
+  "goal_hint": "Compare the requested items and produce a structured, sourced comparison.",
+  "strategy": ["Visit each item's page", "Extract comparable attributes (price, specs, rating)", "Assemble a table", "Summarize the trade-offs"],
+  "verification": "Every requested item covered with at least two comparable attributes and source URLs.",
+  "failure_handling": "If one item's page fails or lacks data, note the gap and continue with the rest.",
+  "prompt_extra": ""
+}

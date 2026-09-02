@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Comet-X palette: deep space + comet violet -->
+    <color name="background">#0E1116</color>
+    <color name="surface">#161B22</color>
+    <color name="surface_high">#1D242E</color>
+    <color name="divider">#2A313C</color>
+    <color name="text_primary">#E6EDF3</color>
+    <color name="text_secondary">#8B949E</color>
+    <color name="accent">#8B5CF6</color>
+    <color name="accent_bright">#A78BFA</color>
+    <color name="accent_dim">#4C3A75</color>
+    <color name="success">#3FB950</color>
+    <color name="warning">#D29922</color>
+    <color name="danger">#F85149</color>
+    <color name="chip_bg">#242B36</color>
+</resources>

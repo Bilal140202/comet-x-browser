@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Comet head + trail mark -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- trail -->
+    <path
+        android:pathData="M28,74 L74,34 M36,80 L80,40 M44,85 L86,47"
+        android:strokeColor="#A78BFA"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M22,66 L66,28 M30,72 L72,34"
+        android:strokeColor="#8B5CF6"
+        android:strokeWidth="5"
+        android:strokeLineCap="round" />
+    <!-- head -->
+    <path
+        android:pathData="M76,40 m-11,0 a11,11 0 1,1 22,0 a11,11 0 1,1 -22,0"
+        android:fillColor="#E6EDF3" />
+    <path
+        android:pathData="M72,36 m-3.5,0 a3.5,3.5 0 1,1 7,0 a3.5,3.5 0 1,1 -7,0"
+        android:fillColor="#161B22" />
+</vector>

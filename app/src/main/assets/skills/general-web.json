@@ -1,0 +1,11 @@
+{
+  "id": "general-web",
+  "name": "General web",
+  "icon": "✦",
+  "keywords": ["search", "find", "open", "go", "browse", "visit"],
+  "goal_hint": "Complete the user's task by browsing efficiently and verifying results.",
+  "strategy": ["Observe the page before acting", "Prefer explicit element refs over coordinates", "Verify each action's effect", "Finish when the goal is visibly achieved"],
+  "verification": "The goal is confirmed by visible page state before done.",
+  "failure_handling": "Re-observe after failures; change approach after 2 failed attempts; ask_user when blocked.",
+  "prompt_extra": ""
+}

@@ -1,0 +1,17 @@
+# Machine-local build artifacts
+local.properties
+.gradle/
+build/
+app/build/
+*.jks
+*.keystore
+keystore.properties
+.env
+.env.*
+*.log
+.idea/
+*.iml
+.DS_Store
+captures/
+externalNativeBuild/
+.cxx/

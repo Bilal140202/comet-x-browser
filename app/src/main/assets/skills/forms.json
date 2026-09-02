@@ -1,0 +1,11 @@
+{
+  "id": "forms",
+  "name": "Forms",
+  "icon": "📝",
+  "keywords": ["form", "register", "signup", "sign up", "fill", "application", "submit form"],
+  "goal_hint": "Locate and fill the requested form with ONLY user-provided values.",
+  "strategy": ["Identify all fields and labels", "Fill only values the user supplied", "Echo values back for review", "Wait for explicit submit approval"],
+  "verification": "All required fields filled with user-provided values; values echoed back before any submit.",
+  "failure_handling": "Never invent personal data. Missing value → ask_user. CAPTCHA → ask_user.",
+  "prompt_extra": "Never submit the form without explicit user confirmation. Never type passwords unless the user takes control."
+}

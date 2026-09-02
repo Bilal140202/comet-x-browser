@@ -1,0 +1,12 @@
+{
+  "id": "research",
+  "name": "Research",
+  "icon": "🔍",
+  "keywords": ["research", "find information", "look up", "compare articles", "sources", "investigate"],
+  "goal_hint": "Gather the requested information from the web and summarize it with sources.",
+  "strategy": ["Search with a precise query", "Open 2-3 authoritative results", "Extract key facts from each", "Cross-check and summarize"],
+  "verification": "Information confirmed from at least two independent sources when possible; note the source URL for each fact.",
+  "failure_handling": "If search results are thin, refine the query once; if sources conflict, present both; if paywalled, ask_user.",
+  "failure_notes": "",
+  "prompt_extra": ""
+}

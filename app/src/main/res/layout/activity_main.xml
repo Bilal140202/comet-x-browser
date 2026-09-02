@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/background">
+
+    <!-- ================= Top bar ================= -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="6dp"
+        android:background="@color/surface">
+
+        <Button
+            android:id="@+id/btnBack"
+            
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="40dp"
+            android:text="‹"
+            android:textSize="22sp"
+            android:textColor="@color/text_primary"
+            android:background="?android:attr/selectableItemBackgroundBorderless" />
+
+        <Button
+            android:id="@+id/btnForward"
+            
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="40dp"
+            android:text="›"
+            android:textSize="22sp"
+            android:textColor="@color/text_primary"
+            android:background="?android:attr/selectableItemBackgroundBorderless" />
+
+        <Button
+            android:id="@+id/btnReload"
+            
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="40dp"
+            android:text="⟳"
+            android:textSize="18sp"
+            android:textColor="@color/text_primary"
+            android:background="?android:attr/selectableItemBackgroundBorderless" />
+
+        <EditText
+            android:id="@+id/urlBar"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:layout_marginHorizontal="6dp"
+            android:paddingHorizontal="14dp"
+            android:background="@drawable/bg_urlbar"
+            android:hint="@string/url_hint"
+            android:textColorHint="@color/text_secondary"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp"
+            android:inputType="textUri"
+            android:imeOptions="actionGo"
+            android:maxLines="1"
+            android:importantForAutofill="no" />
+
+        <Button
+            android:id="@+id/btnTabs"
+            
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="40dp"
+            android:text="▣"
+            android:textSize="16sp"
+            android:textColor="@color/text_primary"
+            android:background="?android:attr/selectableItemBackgroundBorderless" />
+
+        <Button
+            android:id="@+id/btnMenu"
+            
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="40dp"
+            android:text="⋮"
+            android:textSize="20sp"
+            android:textColor="@color/text_primary"
+            android:background="?android:attr/selectableItemBackgroundBorderless" />
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:max="100"
+        android:progressTint="@color/accent"
+        android:background="@color/surface" />
+
+    <!-- ================= Challenge banner ================= -->
+    <LinearLayout
+        android:id="@+id/challengeBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="10dp"
+        android:background="@color/warning"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:id="@+id/challengeText"
+            android:text="Human verification required"
+            android:textColor="@color/background"
+            android:textSize="13sp"
+            android:maxLines="2" />
+
+        <Button
+            android:id="@+id/btnChallengeTake"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Take Control"
+            android:textSize="12sp"
+            android:textColor="@color/background" />
+
+        <Button
+            android:id="@+id/btnChallengeResume"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="6dp"
+            android:text="Resume"
+            android:textSize="12sp"
+            android:textColor="@color/background" />
+    </LinearLayout>
+
+    <!-- ================= Web container ================= -->
+    <FrameLayout
+        android:id="@+id/webContainer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- ================= Ask Agent bar ================= -->
+    <LinearLayout
+        android:id="@+id/askBar"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/surface"
+        android:paddingHorizontal="12dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✦"
+            android:textColor="@color/accent_bright"
+            android:textSize="18sp"
+            android:paddingEnd="10dp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/ask_agent"
+            android:textColor="@color/text_secondary"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/btnOpenAgent"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Open"
+            android:textSize="12sp"
+            android:background="@drawable/bg_button_accent"
+            android:textColor="@color/background"
+            android:paddingHorizontal="16dp" />
+    </LinearLayout>
+
+    <!-- ================= Agent panel ================= -->
+    <LinearLayout
+        android:id="@+id/agentPanel"
+        android:layout_width="match_parent"
+        android:layout_height="340dp"
+        android:orientation="vertical"
+        android:background="@drawable/bg_agent_panel"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <View
+                android:id="@+id/statusDot"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:background="@color/text_secondary" />
+
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="✦ What should I do?"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:singleLine="true" />
+
+            <TextView
+                android:id="@+id/stepText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/btnPanelClose"
+                
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="36dp"
+                android:text="▾"
+                android:textColor="@color/text_secondary"
+                android:background="?android:attr/selectableItemBackgroundBorderless" />
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/goalInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:padding="10dp"
+            android:background="@drawable/bg_panel_input"
+            android:hint="Describe the task, e.g. find the cheapest hotel in Ahmedabad for Friday"
+            android:textColorHint="@color/text_secondary"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp"
+            android:minLines="2"
+            android:maxLines="4"
+            android:inputType="textMultiLine|textCapSentences" />
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/skillChips"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <Button
+                android:id="@+id/btnRun"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:text="Run Agent"
+                android:textSize="13sp"
+                android:background="@drawable/bg_button_accent"
+                android:textColor="@color/background" />
+
+            <Button
+                android:id="@+id/btnTakeControl"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Take Control"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btnResume"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Resume"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btnStop"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Stop"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/answerRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            android:visibility="gone">
+
+            <EditText
+                android:id="@+id/answerInput"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:paddingHorizontal="10dp"
+                android:background="@drawable/bg_panel_input"
+                android:hint="Your answer…"
+                android:textColorHint="@color/text_secondary"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:singleLine="true" />
+
+            <Button
+                android:id="@+id/btnAnswerSend"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:text="Send"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <ListView
+            android:id="@+id/logList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginTop="8dp"
+            android:divider="@color/divider"
+            android:dividerHeight="1px"
+            android:stackFromBottom="true"
+            android:transcriptMode="normal" />
+    </LinearLayout>
+</LinearLayout>
