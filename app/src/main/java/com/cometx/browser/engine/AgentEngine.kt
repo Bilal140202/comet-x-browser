@@ -1,6 +1,7 @@
 package com.cometx.browser.engine
 
 import android.webkit.WebView
+import com.cometx.browser.ai.AgentProtocol
 import com.cometx.browser.ai.ChatMessage
 import com.cometx.browser.ai.ModelRouter
 import com.cometx.browser.ai.SettingsRepository
@@ -76,6 +77,13 @@ class AgentEngine(
     private var session: MemoryStore.Session? = null
     private var forceVisionNext = false
     private var lastActionFailed = false
+    private var observationCompressed = false
+
+    /** §19: shrink an oversized observation (elements + page text). */
+    private fun compress(obs: PageObservation): PageObservation = obs.copy(
+        elements = obs.elements.take(40),
+        textSample = obs.textSample.take(4000)
+    )
 
     fun bind(listener: Listener) {
         this.listener = listener
@@ -88,6 +96,7 @@ class AgentEngine(
         this.session = MemoryStore.Session(goal, System.currentTimeMillis())
         this.forceVisionNext = false
         this.lastActionFailed = false
+        this.observationCompressed = false
         setState(State.RUNNING, "Agent starting")
         listener?.onLog("✦ Goal: $goal")
         skill?.let { listener?.onLog("Skill: ${it.name}") }
@@ -179,7 +188,7 @@ class AgentEngine(
                 }
 
                 val challenge = ChallengeDetector.evaluate(obsFlagged.url, obsFlagged.textSample, obsFlagged.elements.joinToString("\n") { it.describe() })
-                val obsFinal = obsFlagged.copy(challenge = challenge)
+                var obsFinal = obsFlagged.copy(challenge = challenge)
 
                 if (challenge.type != ChallengeResult.NONE) {
                     listener?.onLog("🔒 Human verification detected: ${challenge.detail}")
@@ -209,47 +218,64 @@ class AgentEngine(
                     forceVisionNext = false
                 }
 
-                // 4) PLAN (LLM) ----------------------------------------------
-                val messages = mutableListOf<ChatMessage>()
-                messages.add(
-                    ChatMessage(
-                        role = "system",
-                        text = AgentPrompt.system(
-                            goal, skill, memory, maxSteps,
-                            injectionWarning = injections.isNotEmpty(),
-                            challengeNote = if (challenge.type != ChallengeResult.NONE) challenge.detail else null
+                // §20: never feed pixels to a model that cannot see them.
+                // If the agent model lacks vision, a SEPARATE vision model
+                // describes the screenshot as text; without one, DOM/a11y only.
+                var visionDescription: String? = null
+                val agentModelSees = try { router.resolve(ModelRouter.Role.AGENT)?.model?.supports(com.cometx.browser.ai.Capability.VISION) == true } catch (_: Exception) { false }
+                if (visionB64 != null && !agentModelSees) {
+                    visionDescription = try { router.describeScreenshot(visionB64) } catch (_: Exception) { null }
+                    if (visionDescription != null) {
+                        listener?.onLog("👁 Vision model described the screenshot (agent model is text-only)")
+                    } else {
+                        listener?.onLog("👁 No vision model available — continuing with DOM/accessibility perception")
+                    }
+                    visionB64 = null
+                }
+
+                // 4) PLAN (LLM — protocol negotiated per model, Phase 2 §5) ---
+                fun buildMessages(protocol: AgentProtocol): List<ChatMessage> {
+                    val messages = mutableListOf<ChatMessage>()
+                    messages.add(
+                        ChatMessage(
+                            role = "system",
+                            text = AgentPrompt.system(
+                                goal, skill, memory, maxSteps,
+                                injectionWarning = injections.isNotEmpty(),
+                                challengeNote = if (challenge.type != ChallengeResult.NONE) challenge.detail else null,
+                                protocol = protocol
+                            )
                         )
                     )
-                )
-                messages.add(AgentPrompt.stepMessage(obsFinal, history, visionB64, userAnswer))
-                userAnswer = null
+                    val compressedHistory = if (observationCompressed) history.takeLast(4) else history
+                    messages.add(AgentPrompt.stepMessage(obsFinal, compressedHistory, visionB64, userAnswer, visionDescription))
+                    return messages
+                }
 
-                val raw = try {
-                    router.chatWithFallback(ModelRouter.Role.REASONING, messages)
+                val turn = try {
+                    router.agentStep(
+                        ModelRouter.AgentRequest(ModelRouter.Role.AGENT) { protocol -> buildMessages(protocol) }
+                    )
+                } catch (e: com.cometx.browser.ai.ContextTooLargeException) {
+                    // §19: observation too large → compress and retry ONCE
+                    if (observationCompressed) {
+                        listener?.onLog("Observation still too large for the model — stopping", isError = true)
+                        fail("page too large for the selected model")
+                        return
+                    }
+                    observationCompressed = true
+                    listener?.onLog("⚠ Observation exceeded model context — compressing and retrying")
+                    obsFinal = compress(obsFinal)
+                    continue
                 } catch (e: Exception) {
                     listener?.onLog("Model error: ${e.message}", isError = true)
                     fail("model call failed: ${e.message}")
                     return
                 }
-
-                // 5) PARSE (+ one repair retry) ------------------------------
-                var action = ActionParser.parse(raw) ?: ActionParser.salvage(raw)
-                if (action == null) {
-                    listener?.onLog("Model returned non-JSON; requesting repair")
-                    val repair = try {
-                        router.chatWithFallback(
-                            ModelRouter.Role.REASONING,
-                            messages + ChatMessage("assistant", raw.take(800)) + ChatMessage("user", AgentPrompt.repair())
-                        )
-                    } catch (e: Exception) { null }
-                    action = repair?.let { ActionParser.parse(it) ?: ActionParser.salvage(it) }
-                    if (action == null) {
-                        history.add(JSONObject().put("step", step).put("error", "unparseable model output twice"))
-                        listener?.onLog("Unparseable model output — stopping", isError = true)
-                        fail("model repeatedly returned invalid JSON")
-                        return
-                    }
-                }
+                for (event in turn.events) listener?.onLog("· $event")
+                if (observationCompressed) listener?.onLog("· compressed observation in use for this task")
+                val action = turn.decision.toActionJson()
+                userAnswer = null
                 val note = action.optString("note", "")
                 if (note.isNotBlank()) listener?.onLog("· $note")
 

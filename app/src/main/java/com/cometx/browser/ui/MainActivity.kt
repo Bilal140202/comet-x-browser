@@ -26,6 +26,7 @@ import com.cometx.browser.R
 import com.cometx.browser.ai.CustomOpenAIProvider
 import com.cometx.browser.ai.GroqProvider
 import com.cometx.browser.ai.HuggingFaceProvider
+import com.cometx.browser.ai.ModelCatalog
 import com.cometx.browser.ai.ModelRouter
 import com.cometx.browser.ai.OpenAICompatibleProvider
 import com.cometx.browser.ai.OpenRouterProvider
@@ -77,9 +78,9 @@ class MainActivity : Activity() {
         val executor = ActionExecutor(this)
 
         providers = mapOf(
-            "groq" to GroqProvider { settings.apiKey("groq") },
-            "openrouter" to OpenRouterProvider { settings.apiKey("openrouter") },
-            "huggingface" to HuggingFaceProvider { settings.apiKey("huggingface") },
+            "groq" to GroqProvider(keyProvider = { settings.apiKey("groq") }),
+            "openrouter" to OpenRouterProvider(keyProvider = { settings.apiKey("openrouter") }),
+            "huggingface" to HuggingFaceProvider(keyProvider = { settings.apiKey("huggingface") }),
             "custom" to CustomOpenAIProvider(
                 keyProvider = { settings.apiKey("custom") },
                 readyCheck = { !settings.apiKey("custom").isNullOrBlank() || !settings.baseUrl("custom").isNullOrBlank() }
@@ -89,7 +90,9 @@ class MainActivity : Activity() {
         for ((pid, prov) in providers) {
             settings.baseUrl(pid)?.let { prov.setBaseUrl(UrlNormalizer.normalize(it)) }
         }
-        router = ModelRouter(settings, providers)
+        // Phase 2 migration: v1.1.0 per-role model picks become optional Advanced overrides
+        settings.runModeMigration()
+        router = ModelRouter(settings, providers, ModelCatalog(app))
 
         browser = BrowserController(this)
 

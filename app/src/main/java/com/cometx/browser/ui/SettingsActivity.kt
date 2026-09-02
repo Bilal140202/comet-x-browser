@@ -13,9 +13,12 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import com.cometx.browser.ai.ConnectionDiagnostics
 import com.cometx.browser.ai.CustomOpenAIProvider
 import com.cometx.browser.ai.GroqProvider
 import com.cometx.browser.ai.HuggingFaceProvider
+import com.cometx.browser.ai.ModelCatalog
+import com.cometx.browser.ai.ModelRanker
 import com.cometx.browser.ai.ModelRouter
 import com.cometx.browser.ai.OpenAICompatibleProvider
 import com.cometx.browser.ai.OpenRouterProvider
@@ -30,21 +33,27 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * SettingsActivity — provider configuration with explicit Save/Test per provider,
- * model dropdowns (fetched + manual + default), and a user-ordered fallback chain.
+ * SettingsActivity — Phase 2 zero-config UX (§12/§22):
  *
- * v1.1.0: replaces focus-loss persistence with explicit [Save]; adds [Test]
- * (real connectivity check), [Fetch models] (live catalog), per-role model
- * dropdowns with default fallback, chain priority ordering, and self-run URL
- * normalization.
+ *   Choose provider → paste API key → [Test & Enable] → READY.
+ *
+ * The app discovers models, verifies capabilities and selects the best
+ * agent-compatible model automatically ("AUTO"). Manual model entry survives
+ * only inside an opt-in [Advanced] section for power users (§13) and is never
+ * required. Includes the Agent Compatibility self-test (§26) and the AI event
+ * log viewer (§36/§37).
  */
 class SettingsActivity : Activity() {
 
     private lateinit var settings: SettingsRepository
     private lateinit var secure: SecureStore
     private lateinit var memory: MemoryStore
+    private lateinit var catalog: ModelCatalog
     private lateinit var root: LinearLayout
 
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -56,41 +65,35 @@ class SettingsActivity : Activity() {
         "custom" to "Self-run (OpenAI-compatible)"
     )
     private val providerTags = mapOf(
-        "groq" to "fastest inference · free tier",
-        "openrouter" to "400+ models behind one key",
-        "huggingface" to "inference router · free quota",
+        "groq" to "fastest inference · free tier · key is enough",
+        "openrouter" to "one key · free models used automatically",
+        "huggingface" to "inference router · free quota · key is enough",
         "custom" to "Ollama · LM Studio · vLLM · any /v1 endpoint"
     )
 
-    /** Per-provider pending (unsaved) UI state. */
+    /** Per-provider pending (unsaved) key/url UI state. */
     private class ProviderUi {
         var keyText: String = ""
         var urlText: String = ""
-        val roleValues = mutableMapOf<ModelRouter.Role, String>() // "" = default
-        var fetched: List<String>? = null
-        val spinners = mutableMapOf<ModelRouter.Role, Spinner>()
-        var dirtyDot: TextView? = null
-        var statusLabel: TextView? = null
-        var testButton: Button? = null
-        var fetchButton: Button? = null
         var savedKey: String = ""
         var savedUrl: String = ""
-        val savedRoleValues = mutableMapOf<ModelRouter.Role, String>()
-        val spinnerPos = mutableMapOf<ModelRouter.Role, Int>()
-        var dialogOpen = false
+        var dirtyDot: TextView? = null
+        var statusLabel: TextView? = null
+        var autoLabel: TextView? = null
+        var testButton: Button? = null
+        var testInProgress: Boolean = false
 
-        fun isDirty(): Boolean =
-            keyText != savedKey || urlText != savedUrl ||
-                ModelRouter.Role.entries.any { (roleValues[it] ?: "") != (savedRoleValues[it] ?: "") }
+        fun isDirty(): Boolean = keyText != savedKey || urlText != savedUrl
     }
 
     private val ui = mutableMapOf<String, ProviderUi>()
+    private val advancedExpanded = mutableMapOf<String, Boolean>()
 
     private val providers: Map<String, OpenAICompatibleProvider> by lazy {
         mapOf(
-            "groq" to GroqProvider { settings.apiKey("groq") },
-            "openrouter" to OpenRouterProvider { settings.apiKey("openrouter") },
-            "huggingface" to HuggingFaceProvider { settings.apiKey("huggingface") },
+            "groq" to GroqProvider(keyProvider = { settings.apiKey("groq") }),
+            "openrouter" to OpenRouterProvider(keyProvider = { settings.apiKey("openrouter") }),
+            "huggingface" to HuggingFaceProvider(keyProvider = { settings.apiKey("huggingface") }),
             "custom" to CustomOpenAIProvider(
                 keyProvider = { settings.apiKey("custom") },
                 readyCheck = { !settings.apiKey("custom").isNullOrBlank() || !settings.baseUrl("custom").isNullOrBlank() }
@@ -103,6 +106,8 @@ class SettingsActivity : Activity() {
         secure = SecureStore(this)
         settings = SettingsRepository(this, secure)
         memory = MemoryStore(filesDir) { settings.memoryEnabled() }
+        catalog = ModelCatalog(this)
+        settings.runModeMigration()
 
         val scroll = ScrollView(this)
         root = LinearLayout(this).apply {
@@ -120,12 +125,15 @@ class SettingsActivity : Activity() {
         root.removeAllViews()
         ui.clear()
 
-        header("AI Providers")
-        body("Paste a key, press Save, then Test. Defaults are preconfigured — a key alone works. " +
-            "Enabled providers form a fallback chain: if one fails, the next serves the request automatically. " +
+        header("AI Provider")
+        body("Paste an API key and press Test & Enable. Comet-X discovers the available models, " +
+            "checks what each one supports and picks the best agent model automatically. " +
+            "No model IDs, no JSON settings — a key is enough. " +
             "Keys are encrypted with the Android Keystore and never leave the device.")
-        chainSummary()
         for (id in SettingsRepository.ALL_PROVIDERS) addProviderBlock(id)
+
+        header("AI diagnostics")
+        addDiagnosticsButtons()
 
         header("Agent behavior")
         addNumberField("Max steps per task (4–60)", settings.maxSteps()) { settings.setMaxSteps(it) }
@@ -152,19 +160,6 @@ class SettingsActivity : Activity() {
         }
     }
 
-    private fun chainSummary() {
-        val live = settings.liveChain()
-        val text = if (live.isEmpty())
-            "⚠ Fallback chain is EMPTY — enable a provider and save a key."
-        else
-            "Fallback chain: " + live.mapIndexed { i, id -> "${i + 1}. ${providerNames[id]}" }.joinToString("  →  ")
-        val tv = TextView(this)
-        tv.text = text
-        tv.textSize = 12f
-        tv.setTextColor(getColor(if (live.isEmpty()) com.cometx.browser.R.color.accent_bright else com.cometx.browser.R.color.text_secondary))
-        root.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(8)) })
-    }
-
     // ---------------------------------------------------------------- providers
 
     private fun addProviderBlock(id: String) {
@@ -173,10 +168,6 @@ class SettingsActivity : Activity() {
         ui[id] = s
         s.savedKey = settings.apiKey(id) ?: ""
         s.savedUrl = settings.baseUrl(id) ?: ""
-        for (role in ModelRouter.Role.entries) {
-            s.savedRoleValues[role] = settings.modelFor(id, role) ?: ""
-            s.roleValues[role] = s.savedRoleValues[role] ?: ""
-        }
         s.keyText = s.savedKey
         s.urlText = s.savedUrl
 
@@ -191,12 +182,11 @@ class SettingsActivity : Activity() {
 
         // -- title + status
         val titleRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val name = TextView(this).apply {
+        titleRow.addView(TextView(this).apply {
             text = providerNames[id]
             textSize = 15f
             setTextColor(getColor(com.cometx.browser.R.color.text_primary))
-        }
-        titleRow.addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         s.statusLabel = TextView(this).apply {
             textSize = 11f
             setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
@@ -205,16 +195,15 @@ class SettingsActivity : Activity() {
         titleRow.addView(s.statusLabel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         card.addView(titleRow)
 
-        val tag = TextView(this).apply {
+        card.addView(TextView(this).apply {
             text = providerTags[id]
             textSize = 11f
             setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
-        }
-        card.addView(tag)
+        })
 
-        // -- enabled + priority
+        // -- enabled (fallback chain membership)
         val enabled = CheckBox(this).apply {
-            text = "Enabled — in fallback chain"
+            text = "Enabled — included in fallback"
             textSize = 13f
             setTextColor(getColor(com.cometx.browser.R.color.text_primary))
             isChecked = settings.providerEnabled(id)
@@ -222,34 +211,15 @@ class SettingsActivity : Activity() {
         card.addView(enabled, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, 0) })
         enabled.setOnCheckedChangeListener { _, checked ->
             settings.setProviderEnabled(id, checked)
-            buildUi()
         }
 
-        val prioRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        prioRow.addView(TextView(this).apply {
-            text = "Priority:"
+        // -- API key
+        card.addView(TextView(this).apply {
+            text = if (s.savedKey.isNotBlank()) "API key (saved — retype to replace)" else if (id == "custom") "API key (optional for local servers)" else "API key"
             textSize = 12f
             setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { gravity = android.view.Gravity.CENTER_VERTICAL })
-        val order = settings.chainOrder()
-        val pos = order.indexOf(id)
-        val up = Button(this).apply { text = "▲"; textSize = 11f; isEnabled = pos > 0 }
-        val down = Button(this).apply { text = "▼"; textSize = 11f; isEnabled = pos < order.size - 1 }
-        up.setOnClickListener { settings.moveInChain(id, -1); buildUi() }
-        down.setOnClickListener { settings.moveInChain(id, 1); buildUi() }
-        prioRow.addView(up, LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(4), 0, 0, 0) })
-        prioRow.addView(down, LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT))
-        card.addView(prioRow)
-
-        // -- API key (not auto-saved)
-        val keyLabel = TextView(this).apply {
-            text = if (s.savedKey.isNotBlank()) "API key (saved — retype to replace)" else if (id == "custom") "API key (optional for local servers)" else "API key (not set)"
-            textSize = 12f
-            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
-        }
-        card.addView(keyLabel)
+        })
         val keyInput = EditText(this).apply {
-            setText(if (s.savedKey.isNotBlank()) "" else "") // never echo saved key to screen
             hint = if (s.savedKey.isNotBlank()) "••••••••  (leave blank to keep)" else keyHint(id)
             textSize = 13f
             setTextColor(getColor(com.cometx.browser.R.color.text_primary))
@@ -296,124 +266,168 @@ class SettingsActivity : Activity() {
             })
         }
 
-        // -- models per role: dropdown with Default + fetched + Custom
-        card.addView(TextView(this).apply {
-            text = "Models per role — Default works out of the box; Fetch models to load the live list; Custom to type one:"
+        // -- AUTO status line ("Agent model: AUTO — …")
+        s.autoLabel = TextView(this).apply {
             textSize = 12f
-            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
-            setPadding(0, dp(6), 0, dp(2))
-        })
-        for (role in ModelRouter.Role.entries) addModelSpinner(card, id, role, s)
+            setTextColor(getColor(com.cometx.browser.R.color.text_primary))
+            setPadding(0, dp(2), 0, dp(2))
+        }
+        card.addView(s.autoLabel)
 
-        // -- actions: Save / Test / Fetch models
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val save = Button(this).apply { text = "Save" }
-        val test = Button(this).apply { text = "Test" }
-        val fetch = Button(this).apply { text = "Fetch models"; textSize = 11f }
+        // -- Test & Enable (the ONLY button a normal user ever needs)
+        val test = Button(this).apply { text = "Test & Enable" }
         s.testButton = test
-        s.fetchButton = fetch
-        actions.addView(save, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        actions.addView(test, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(6), 0, 0, 0) })
-        card.addView(actions, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(8), 0, dp(2)) })
-        card.addView(fetch, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        card.addView(test, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(6), 0, dp(2)) })
 
-        val dirtyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        // -- unsaved indicator
         s.dirtyDot = TextView(this).apply {
-            text = "unsaved changes — press Save to apply"
+            text = "unsaved — Test & Enable will save it"
             textSize = 11f
             setTextColor(getColor(com.cometx.browser.R.color.accent_bright))
             visibility = android.view.View.GONE
         }
-        dirtyRow.addView(s.dirtyDot)
-        card.addView(dirtyRow)
+        card.addView(s.dirtyDot)
+
+        // -- Advanced disclosure (optional overrides, §13)
+        val advToggle = Button(this).apply { text = if (advancedExpanded[id] == true) "Advanced ▴" else "Advanced ▾"; textSize = 11f }
+        card.addView(advToggle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(2), 0, 0) })
+        val advBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (advancedExpanded[id] == true) android.view.View.VISIBLE else android.view.View.GONE
+            setPadding(dp(4), 0, 0, 0)
+        }
+        card.addView(advBox)
+        advToggle.setOnClickListener {
+            advancedExpanded[id] = advancedExpanded[id] != true
+            advToggle.text = if (advancedExpanded[id] == true) "Advanced ▴" else "Advanced ▾"
+            advBox.visibility = if (advancedExpanded[id] == true) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        buildAdvanced(advBox, id, p)
 
         refreshStatus(id, s)
-
-        save.setOnClickListener { saveProvider(id, s) }
-        test.setOnClickListener { testProvider(id, s) }
-        fetch.setOnClickListener { fetchModels(id, s) }
+        test.setOnClickListener { testAndEnable(id, s) }
         refreshDirty(s)
     }
 
-    private fun addModelSpinner(parent: LinearLayout, id: String, role: ModelRouter.Role, s: ProviderUi) {
+    /** Advanced section: mode + optional per-role overrides (§13). Never required. */
+    private fun buildAdvanced(box: LinearLayout, id: String, p: OpenAICompatibleProvider) {
+        box.addView(TextView(this).apply {
+            text = "Everything here is OPTIONAL — AUTO handles models, protocols and fallbacks for you."
+            textSize = 11f
+            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
+        })
+        box.addView(TextView(this).apply {
+            text = "Model selection"
+            textSize = 12f
+            setTextColor(getColor(com.cometx.browser.R.color.text_primary))
+            setPadding(0, dp(6), 0, dp(2))
+        })
+        val modeSpinner = Spinner(this)
+        val modes = listOf("AUTO — recommended (app picks the best model)", "MANUAL — advanced overrides below")
+        modeSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, modes)
+        modeSpinner.setSelection(if (settings.modelMode(id) == SettingsRepository.ModelMode.MANUAL) 1 else 0)
+        box.addView(modeSpinner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        modeSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            private var first = true
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, pos: Int, rowId: Long) {
+                if (first) { first = false; return }
+                settings.setModelMode(id, if (pos == 0) SettingsRepository.ModelMode.AUTO else SettingsRepository.ModelMode.MANUAL)
+                toast(if (pos == 0) "AUTO — Comet-X picks models automatically" else "MANUAL — advanced overrides active")
+                refreshAutoLabel(id, ui[id] ?: return)
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+
+        box.addView(TextView(this).apply {
+            text = "Per-role overrides (MANUAL mode only — AUTO ignores these):"
+            textSize = 11f
+            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
+            setPadding(0, dp(6), 0, dp(2))
+        })
+        for (role in ModelRouter.Role.entries) addAdvancedModelSpinner(box, id, role)
+
+        box.addView(TextView(this).apply {
+            text = "Cache: " + (settings.lastDiagnostics(id)?.optString("providerName")?.let { "last test stored" } ?: "no test run yet")
+            textSize = 11f
+            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
+            setPadding(0, dp(8), 0, 0)
+        })
+        val clearCache = Button(this).apply { text = "Forget discovered models (refresh cache)"; textSize = 11f }
+        box.addView(clearCache, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        clearCache.setOnClickListener {
+            catalog.invalidate(id)
+            toast("Model cache cleared — next Test & Enable re-discovers")
+        }
+    }
+
+    /** One advanced per-role override dropdown (AUTO / fetched / custom). */
+    private fun addAdvancedModelSpinner(parent: LinearLayout, id: String, role: ModelRouter.Role) {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(TextView(this).apply {
             text = role.name.lowercase().replaceFirstChar { it.uppercase() }
             textSize = 12f
             setTextColor(getColor(com.cometx.browser.R.color.text_primary))
-        }, LinearLayout.LayoutParams(dp(88), ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = android.view.Gravity.CENTER_VERTICAL })
+        }, LinearLayout.LayoutParams(dp(96), ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = android.view.Gravity.CENTER_VERTICAL })
 
         val spinner = Spinner(this)
-        s.spinners[role] = spinner
         row.addView(spinner, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         parent.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(2), 0, dp(2)) })
-        refreshSpinner(id, role, s)
-    }
 
-    private fun refreshSpinner(id: String, role: ModelRouter.Role, s: ProviderUi) {
-        val spinner = s.spinners[role] ?: return
-        val defaultModel = ModelRouter.defaultModelFor(id, role)
+        val saved = settings.modelFor(id, role)
         val options = ArrayList<String>()
-        options.add("Default — $defaultModel")
-        s.fetched?.let { fetched -> options.addAll(fetched) }
+        options.add("AUTO")
+        options.addAll(lastKnownModels(id))
         options.add("Custom… (type manually)")
-
-        val current = s.roleValues[role] ?: ""
         var selected = 0
-        if (current.isNotBlank()) {
-            val idx = s.fetched?.indexOf(current)?.plus(1) ?: -1
-            selected = if (idx >= 0) idx else options.size - 1
+        if (!saved.isNullOrBlank()) {
+            val idx = lastKnownModels(id).indexOf(saved)
+            selected = if (idx >= 0) idx + 1 else options.size - 1
         }
-
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, options)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spinner.adapter = adapter
-        spinner.setSelection(selected.coerceAtMost(options.size - 1), false)
-        s.spinnerPos[role] = selected.coerceAtMost(options.size - 1)
-        spinner.tag = role
-
+        var pos = selected.coerceAtMost(options.size - 1)
+        spinner.setSelection(pos, false)
+        var dialogOpen = false
         spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, pos: Int, rowId: Long) {
-                val r = spinner.tag as ModelRouter.Role
-                if (pos == s.spinnerPos[r]) return // programmatic re-render, not a user choice
-                s.spinnerPos[r] = pos
+            override fun onItemSelected(parentView: android.widget.AdapterView<*>?, view: android.view.View?, sel: Int, rowId: Long) {
+                if (sel == pos) return
+                pos = sel
                 when {
-                    pos == 0 -> { s.roleValues[r] = ""; refreshDirty(s) }
-                    pos == options.size - 1 -> {
-                        if (s.dialogOpen) return
-                        s.dialogOpen = true
-                        promptManualModel(id, r, s, current = s.roleValues[r] ?: "") { typed ->
-                            s.dialogOpen = false
-                            if (typed != null) {
-                                s.roleValues[r] = typed.trim()
-                                refreshDirty(s)
-                            }
-                            refreshSpinner(id, r, s) // re-render; loop-safe via spinnerPos
+                    sel == 0 -> settings.setModel(id, role, "")
+                    sel == options.size - 1 -> {
+                        if (dialogOpen) return
+                        dialogOpen = true
+                        val input = EditText(this@SettingsActivity).apply {
+                            setText(saved ?: "")
+                            hint = "exact model id served by this provider"
                         }
+                        AlertDialog.Builder(this@SettingsActivity)
+                            .setTitle("${providerNames[id]} · ${role.name.lowercase()}")
+                            .setMessage("Type the exact model id. Blank falls back to AUTO.")
+                            .setView(input)
+                            .setPositiveButton("OK") { _, _ ->
+                                settings.setModel(id, role, input.text.toString().trim())
+                                dialogOpen = false
+                            }
+                            .setNegativeButton("Cancel") { _, _ -> dialogOpen = false }
+                            .show()
                     }
-                    else -> {
-                        s.roleValues[r] = options[pos]
-                        refreshDirty(s)
-                    }
+                    else -> settings.setModel(id, role, options[sel])
                 }
             }
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+            override fun onNothingSelected(parentView: android.widget.AdapterView<*>?) {}
         }
     }
 
-    private fun promptManualModel(id: String, role: ModelRouter.Role, s: ProviderUi, current: String, onDone: (String?) -> Unit) {
-        val input = EditText(this).apply {
-            setText(current)
-            hint = "e.g. llama-3.3-70b-versatile or qwen2.5:14b"
-            textSize = 13f
+    /** Model ids from the last cached catalog (advanced dropdown population). */
+    private fun lastKnownModels(id: String): List<String> {
+        val p = providers[id] ?: return emptyList()
+        return try {
+            catalog.cachedModels(p.id)
+        } catch (_: Exception) {
+            emptyList()
         }
-        AlertDialog.Builder(this)
-            .setTitle("Custom model — ${providerNames[id]} / ${role.name.lowercase()}")
-            .setMessage("Type the exact model id served by this provider. Leave blank to fall back to the Default.")
-            .setView(input)
-            .setPositiveButton("OK") { _, _ -> onDone(input.text.toString().trim()) }
-            .setNegativeButton("Cancel") { _, _ -> onDone(null) }
-            .show()
     }
 
     private fun keyHint(id: String) = when (id) {
@@ -423,105 +437,149 @@ class SettingsActivity : Activity() {
         else -> "optional — local servers usually need none"
     }
 
-    // ------------------------------------------------------------ save / test
+    // ------------------------------------------------------------ test & enable
 
-    private fun saveProvider(id: String, s: ProviderUi) {
-        // key: blank keeps existing (never wipe silently)
+    private fun testAndEnable(id: String, s: ProviderUi) {
+        if (s.testInProgress) return
+        // The button SAVES first (§35: paste → connect, no separate save step)
         if (s.keyText.isNotBlank()) settings.setApiKey(id, s.keyText.trim())
         if (id == "custom") settings.setBaseUrl(id, UrlNormalizer.normalize(s.urlText))
-        for (role in ModelRouter.Role.entries) {
-            settings.setModel(id, role, s.roleValues[role] ?: "")
-        }
-        toast("Saved ✓")
-        buildUi()
-    }
+        s.savedKey = settings.apiKey(id) ?: ""
+        s.savedUrl = settings.baseUrl(id) ?: ""
 
-    private fun testProvider(id: String, s: ProviderUi) {
-        if (s.isDirty()) { toast("Unsaved changes — press Save first"); return }
         val p = providers[id] ?: return
-        if (!p.isReady()) { toast("Nothing to test yet — save a key (or a base URL) first"); return }
+        if (!p.isReady()) { toast("Paste an API key first" + if (id == "custom") " (or a base URL)" else ""); return }
+        if (id == "custom") {
+            val base = settings.baseUrl(id)?.let { UrlNormalizer.normalize(it) } ?: ""
+            if (base.isBlank()) { toast("Enter the server base URL first"); return }
+        }
 
+        s.testInProgress = true
         s.testButton?.isEnabled = false
-        s.fetchButton?.isEnabled = false
-        s.statusLabel?.text = "testing…"
-        val model = settings.modelFor(id, ModelRouter.Role.FAST) ?: ModelRouter.defaultModelFor(id, ModelRouter.Role.FAST)
+        s.testButton?.text = "Testing…"
+        s.statusLabel?.text = "connecting…"
+        val diagnostics = ConnectionDiagnostics(catalog)
 
         uiScope.launch {
-            var result = StringBuilder()
-            var okAll = true
+            var report: ConnectionDiagnostics.Report? = null
+            var error: String? = null
             try {
-                val t0 = System.currentTimeMillis()
-                val models = p.listModels()
-                val tModels = System.currentTimeMillis() - t0
-                result.append("✓ Connected — ${models.size} models visible (${tModels}ms)\n")
-                val t1 = System.currentTimeMillis()
-                p.ping(model)
-                val tPing = System.currentTimeMillis() - t1
-                result.append("✓ Model \"$model\" answered in ${tPing}ms\n\nReady — chat & agent will use ${providerNames[id]}.")
-                settings.setLastTest(id, true, "OK — $model (${tPing}ms)")
+                report = diagnostics.run(p, deep = false) { step ->
+                    runOnUiThread { s.statusLabel?.text = step }
+                }
+                settings.setLastDiagnostics(id, report.toJson())
+                settings.setLastTest(id, report.ready, report.render().lineSequence().firstOrNull { it.startsWith("✓ Model") || it.startsWith("✗") || it.startsWith("⚠") } ?: "checked")
             } catch (e: Exception) {
-                okAll = false
-                val msg = if (e is ProviderException) e.message ?: "provider error" else "${e.javaClass.simpleName}: ${e.message}"
-                result.append("✗ Test failed — $msg")
-                if (id == "custom") result.append("\n\nTip: the URL must be reachable from this device. For a server on your computer, expose it via your LAN IP or a tunnel (e.g. cloudflared).")
-                settings.setLastTest(id, false, msg)
+                error = if (e is ProviderException) e.message ?: "provider error" else "${e.javaClass.simpleName}: ${e.message}"
+                settings.setLastTest(id, false, error ?: "failed")
             }
+            s.testInProgress = false
             AlertDialog.Builder(this@SettingsActivity)
-                .setTitle(if (okAll) "Test passed" else "Test failed")
-                .setMessage(result.toString())
+                .setTitle(
+                    when {
+                        report?.ready == true -> "✓ Connected to ${providerNames[id]}"
+                        report != null -> "⚠ ${providerNames[id]} — usable with fallbacks"
+                        else -> "✗ Connection failed"
+                    }
+                )
+                .setMessage(report?.render() ?: (error ?: "unknown error"))
                 .setPositiveButton("OK", null)
                 .show()
             buildUi()
         }
     }
 
-    private fun fetchModels(id: String, s: ProviderUi) {
-        if (s.isDirty()) { toast("Unsaved changes — press Save first"); return }
+    // -------------------------------------------------------------- diagnostics
+
+    private fun addDiagnosticsButtons() {
+        body("Run a full agent compatibility rehearsal, or inspect automatic fallback decisions. " +
+            "Diagnostics never display API keys.")
+        val compatBtn = Button(this); compatBtn.text = "Run Agent Compatibility Test"
+        root.addView(compatBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        compatBtn.setOnClickListener { runCompatibilityTest() }
+
+        val logBtn = Button(this); logBtn.text = "View AI event log"
+        val clearLogBtn = Button(this); clearLogBtn.text = "Clear log"
+        row(logBtn, clearLogBtn)
+        logBtn.setOnClickListener { showAiLog() }
+        clearLogBtn.setOnClickListener { settings.clearAiLog(); toast("AI event log cleared") }
+    }
+
+    private fun runCompatibilityTest() {
+        val ready = providers.entries.filter { it.value.isReady() }
+        if (ready.isEmpty()) { toast("Test & Enable a provider first"); return }
+        val ids = ready.map { it.key }
+        var chosen = ids.first()
+        AlertDialog.Builder(this)
+            .setTitle("Run on which provider?")
+            .setSingleChoiceItems(ids.map { providerNames[it] }.toTypedArray(), 0) { _, which -> chosen = ids[which] }
+            .setPositiveButton("Run") { _, _ -> doCompatibilityTest(chosen) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun doCompatibilityTest(id: String) {
         val p = providers[id] ?: return
-        if (!p.isReady()) { toast("Save a key first"); return }
-        s.fetchButton?.isEnabled = false
-        s.statusLabel?.text = "fetching models…"
+        val dialog = AlertDialog.Builder(this).setTitle("Agent Compatibility Test").setMessage("Running…").show()
         uiScope.launch {
-            try {
-                val models = p.listModels()
-                s.fetched = models
-                toast("${models.size} models loaded")
+            val text = try {
+                ConnectionDiagnostics(catalog).compatibilitySelfTest(p)
             } catch (e: Exception) {
-                val msg = if (e is ProviderException) e.message else "${e.message}"
-                AlertDialog.Builder(this@SettingsActivity)
-                    .setTitle("Could not list models").setMessage("$msg")
-                    .setPositiveButton("OK", null).show()
+                "Compatibility test failed: ${e.message}"
             }
-            withContext(Dispatchers.Main) { buildUi() }
+            runOnUiThread {
+                AlertDialog.Builder(this@SettingsActivity)
+                    .setTitle("COMET-X AI COMPATIBILITY")
+                    .setMessage(text)
+                    .setPositiveButton("OK", null)
+                    .show()
+                dialog.dismiss()
+            }
         }
+    }
+
+    private fun showAiLog() {
+        val log = settings.aiLog()
+        val fmt = SimpleDateFormat("MM-dd HH:mm:ss", Locale.US)
+        val text = if (log.isEmpty()) "(empty)" else buildString {
+            for ((ts, line) in log.reversed()) appendLine("${fmt.format(Date(ts))}  $line")
+        }
+        AlertDialog.Builder(this).setTitle("AI event log — automatic fallbacks & switches").setMessage(text)
+            .setPositiveButton("Close", null)
+            .show()
     }
 
     // ---------------------------------------------------------------- state ui
 
     private fun refreshDirty(s: ProviderUi) {
         s.dirtyDot?.visibility = if (s.isDirty()) android.view.View.VISIBLE else android.view.View.GONE
-        val blocked = s.isDirty()
-        s.testButton?.isEnabled = !blocked
-        s.fetchButton?.isEnabled = !blocked
-        s.testButton?.alpha = if (blocked) 0.5f else 1f
-        s.fetchButton?.alpha = if (blocked) 0.5f else 1f
+        s.testButton?.text = if (s.isDirty()) "Save & Test" else "Test & Enable"
     }
 
     private fun refreshStatus(id: String, s: ProviderUi) {
         val last = settings.lastTest(id)
         val text = when {
-            last != null && last.startsWith("ok") -> {
-                val msg = last.split("|").getOrNull(2) ?: ""
-                "✓ $msg"
-            }
-            last != null && last.startsWith("fail") -> {
-                val msg = last.split("|").getOrNull(2) ?: ""
-                "✗ $msg"
-            }
+            last != null && last.startsWith("ok") -> "✓ ${last.split("|").getOrNull(2) ?: ""}"
+            last != null && last.startsWith("fail") -> "✗ ${last.split("|").getOrNull(2) ?: ""}"
             s.savedKey.isNotBlank() || (id == "custom" && s.savedUrl.isNotBlank()) -> "saved · untested"
             else -> "not set up"
         }
         s.statusLabel?.text = text
+        refreshAutoLabel(id, s)
+    }
+
+    private fun refreshAutoLabel(id: String, s: ProviderUi) {
+        val diag = settings.lastDiagnostics(id)
+        val best = diag?.optJSONObject("bestModel")
+        s.autoLabel?.text = if (best != null && settings.modelMode(id) == SettingsRepository.ModelMode.AUTO) {
+            val protocol = diag.optString("protocol", "")
+            val name = best.optString("displayName", best.optString("id"))
+            "Model: AUTO — currently ${name}${if (protocol.isNotBlank()) " · protocol: $protocol" else ""}"
+        } else if (settings.modelMode(id) == SettingsRepository.ModelMode.MANUAL) {
+            "Model: MANUAL (advanced overrides active)"
+        } else {
+            "Model: AUTO — run Test & Enable to discover models"
+        }
     }
 
     // ------------------------------------------------------------- misc widgets
@@ -558,7 +616,8 @@ class SettingsActivity : Activity() {
     }
 
     private fun addVisionMode() {
-        body("Vision (screenshot) usage: AUTO = only when needed (recommended), ALWAYS = every step (expensive), OFF = only on explicit agent request")
+        body("Vision (screenshot) usage: AUTO = only when needed (recommended), ALWAYS = every step (expensive), OFF = only on explicit agent request. " +
+            "If the agent model cannot read images, Comet-X automatically uses a separate vision model when available, or DOM/accessibility perception.")
         val spinner = Spinner(this)
         val modes = listOf("AUTO", "ALWAYS", "OFF")
         spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, modes.map {

@@ -13,9 +13,9 @@ import org.junit.Test
 
 class ProviderParsingTest {
 
-    private val groq = GroqProvider { "test-key" }
-    private val or = OpenRouterProvider { "test-key" }
-    private val hf = HuggingFaceProvider { "hf-key" }
+    private val groq = GroqProvider(keyProvider = { "test-key" })
+    private val or = OpenRouterProvider(keyProvider = { "test-key" })
+    private val hf = HuggingFaceProvider(keyProvider = { "hf-key" })
 
     @Test fun `parses standard openai completion body`() {
         val body = JSONObject()
@@ -45,7 +45,7 @@ class ProviderParsingTest {
 
     @Test fun `isReady reflects key presence`() {
         assertTrue(groq.isReady())
-        val empty = GroqProvider { null }
+        val empty = GroqProvider(keyProvider = { null })
         assertEquals(false, empty.isReady())
     }
 

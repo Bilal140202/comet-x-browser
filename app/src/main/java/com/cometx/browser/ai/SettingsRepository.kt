@@ -4,13 +4,18 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.cometx.browser.security.SecureStore
 import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * SettingsRepository — the single source of truth for user configuration.
  * API keys are persisted only through SecureStore (Keystore-encrypted);
  * everything else lives in plain prefs (no secrets among them).
+ *
+ * Phase 2: modelMode(AUTO|MANUAL) per provider — AUTO is the default and the
+ * normal user NEVER configures a model (§12/§22). Legacy per-role overrides
+ * from v1.1.0 installations remain valid as ADVANCED overrides (§34 migration).
  */
-class SettingsRepository(context: Context, private val secure: SecureStore) {
+open class SettingsRepository(context: Context, private val secure: SecureStore) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("cometx_settings", Context.MODE_PRIVATE)
@@ -78,7 +83,7 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
         prefs.edit().putString("lasttest_$id", v).apply()
     }
 
-    fun apiKey(id: String): String? = secure.getString("apikey_$id")
+    open fun apiKey(id: String): String? = secure.getString("apikey_$id")
     fun setApiKey(id: String, key: String) {
         if (key.isBlank()) secure.remove("apikey_$id") else secure.putString("apikey_$id", key)
     }
@@ -89,11 +94,65 @@ class SettingsRepository(context: Context, private val secure: SecureStore) {
 
     // ---------- Model routing ----------
 
+    enum class ModelMode { AUTO, MANUAL }
+
+    /** AUTO (default): the app discovers, ranks and selects models itself. */
+    fun modelMode(providerId: String): ModelMode =
+        try {
+            ModelMode.valueOf(prefs.getString("model_mode_$providerId", ModelMode.AUTO.name) ?: ModelMode.AUTO.name)
+        } catch (_: Exception) { ModelMode.AUTO }
+
+    fun setModelMode(providerId: String, mode: ModelMode) =
+        prefs.edit().putString("model_mode_$providerId", mode.name).apply()
+
+    /** ADVANCED override (MANUAL mode only). Never required for normal users. */
     fun modelFor(providerId: String, role: ModelRouter.Role): String? =
         prefs.getString("model_${providerId}_${role.name}", null)
 
     fun setModel(providerId: String, role: ModelRouter.Role, model: String) =
         prefs.edit().putString("model_${providerId}_${role.name}", model.takeIf { it.isNotBlank() }).apply()
+
+    /** Migration (§34): v1.1.0 installs had implicit manual models; from v1.2.0
+     *  they become optional Advanced overrides and AUTO drives selection. */
+    fun runModeMigration() {
+        if (prefs.getBoolean("migrated_v2", false)) return
+        // nothing destructive: stored role models stay as Advanced values;
+        // explicit AUTO is now the mode for every provider
+        for (id in ALL_PROVIDERS) if (prefs.getString("model_mode_$id", null) == null) {
+            setModelMode(id, ModelMode.AUTO)
+        }
+        prefs.edit().putBoolean("migrated_v2", true).apply()
+    }
+
+    // ---------- AI event log (§37 observability; never contains secrets) ----------
+
+    fun appendAiLog(line: String) {
+        val arr = prefs.getString("ai_log", null)?.let { runCatching { JSONArray(it) }.getOrNull() } ?: JSONArray()
+        val entry = JSONArray().put(System.currentTimeMillis()).put(line.take(240))
+        arr.put(entry)
+        while (arr.length() > 50) arr.remove(0)
+        prefs.edit().putString("ai_log", arr.toString()).apply()
+    }
+
+    fun aiLog(): List<Pair<Long, String>> {
+        val arr = prefs.getString("ai_log", null)?.let { runCatching { JSONArray(it) }.getOrNull() } ?: return emptyList()
+        val out = ArrayList<Pair<Long, String>>(arr.length())
+        for (i in 0 until arr.length()) {
+            val e = arr.optJSONArray(i) ?: continue
+            out.add(e.optLong(0) to e.optString(1))
+        }
+        return out
+    }
+
+    fun clearAiLog() = prefs.edit().remove("ai_log").apply()
+
+    // ---------- Connection diagnostics (last Test & Enable checklist, §21) ----------
+
+    fun lastDiagnostics(providerId: String): JSONObject? =
+        prefs.getString("diag_$providerId", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+
+    fun setLastDiagnostics(providerId: String, report: JSONObject) =
+        prefs.edit().putString("diag_$providerId", report.toString()).apply()
 
     // ---------- Agent behavior ----------
 

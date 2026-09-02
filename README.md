@@ -25,13 +25,29 @@
 ## Quick start
 
 1. Install the APK (release artifact or `./gradlew assembleDebug`).
-2. Open **Settings → AI Providers**, paste a key, press **Save**, then **Test**. Defaults are preconfigured — a key alone works. Enable extra providers to build a fallback chain (ordered with ▲/▼); if one fails, the next serves the request automatically.
+2. Open **Settings → AI Provider**, paste an API key, press **Test & Enable**. That's it: Comet-X discovers the provider's live model catalog, checks what each model supports (JSON / tools / vision), picks the best agent-compatible model automatically (**AUTO**) and is ready. OpenRouter uses **free models only** by default. Extra providers can be enabled the same way and form an automatic fallback chain.
 3. Browse somewhere, tap **Ask Agent**, describe the task ("find the cheapest hotel in Ahmedabad for Friday").
 4. Watch the log; use **Take Control** whenever you want the wheel — logins, CAPTCHAs, payments, judgment calls — then **Resume**.
 
 Build details: [docs/development/BUILD.md](docs/development/BUILD.md).
 
 ## Changelog
+
+### v1.2.0 — Phase 2: zero-config AI provider + model compatibility
+- **API key is enough.** The primary workflow is now: choose provider → paste key → **Test & Enable** → READY. No model IDs, no JSON/format settings (§12/§22/§35/§40)
+- **Live model discovery** — `GET /models` is parsed into normalized `ModelInfo` records (context length, capabilities, pricing) and cached with a 6h TTL + key-fingerprint invalidation (§3/§23)
+- **Capability negotiation** — metadata (OpenRouter publishes `supported_parameters`/`pricing`/`input_modalities`) + safe minimal probes + runtime error interpretation decide what each model supports (§4/§24/§25)
+- **Protocol ladder with silent downgrades** — JSON Schema → JSON mode → tool calling → tagged-text → plain-text. "This model does not support JSON" is now a downgrade instruction, never an error (§5/§6/§7)
+- **AgentDecision abstraction** — every protocol maps into one canonical decision; the engine never sees the wire format; ModelResponseInterpreter layer (Json / ToolCall / TaggedText / PlainText) (§7/§8)
+- **AUTO model ranking** — agent-suitability scoring (tools +30, schema +20, json +15, vision +20, context +10, reasoning +10, free +25, latency +10); single-model providers always usable (§10/§11)
+- **OpenRouter free-only AUTO** — paid models excluded automatically in AUTO mode; zero-free-catalog degradation instead of dead-ending
+- **Full recovery ladder** — MODEL_NOT_FOUND → refresh + replacement + retry; RATE_LIMIT → next candidate → next provider → bounded backoff; CONTEXT_TOO_LARGE → observation compression; vision fallback to separate vision model or DOM perception (§16–§20)
+- **Provider error normalization** — 11-kind taxonomy (invalid key, model not found, rate limit, unsupported format/tool/vision, context, network…) (§15)
+- **New Settings UX** — Test & Enable diagnostic checklist (auth → discovery → candidate → structured output → tools → vision; ⚠ never blocks), Advanced disclosure for optional per-role overrides, Agent Compatibility self-test, AI event log viewer (§13/§21/§26/§36)
+- **Migration (§34)** — v1.1.0 per-role model picks become optional Advanced overrides; AUTO drives selection; no installation is bricked
+- Hardcoded model IDs demoted to fallback suggestions only (§33); regression matrix R1–R5 + red-team suite permanently in the test set (§27–§32/§39)
+- Docs: `docs/ai/MODEL_DISCOVERY.md`, `CAPABILITY_NEGOTIATION.md`, `PROVIDER_ARCHITECTURE.md`, `FALLBACK_PROTOCOLS.md`, `docs/testing/AI_COMPATIBILITY_TESTS.md` (§42)
+- **134 unit tests passing** (11 suites)
 
 ### v1.1.0
 - **Explicit Save per provider** — fields no longer persist invisibly on focus loss; a dirty-state indicator and Save ✓ toast make state obvious
