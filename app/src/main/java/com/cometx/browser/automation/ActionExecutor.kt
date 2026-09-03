@@ -101,11 +101,13 @@ class ActionExecutor(private val context: Context) {
         var r = el.getBoundingClientRect();
         var cx = r.left + r.width/2, cy = r.top + r.height/2;
         var opts = {bubbles:true, cancelable:true, clientX:cx, clientY:cy};
-        ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t){
+        ['pointerdown','mousedown','pointerup','mouseup'].forEach(function(t){
           var ev = (t.indexOf('pointer')===0 && window.PointerEvent) ? new PointerEvent(t, Object.assign({pointerId:1, isPrimary:true}, opts)) : new MouseEvent(t, opts);
           el.dispatchEvent(ev);
         });
+        // ONE click only — double dispatch fired submit handlers twice (expert review P1-12)
         if (typeof el.click === 'function') { try { el.click(); } catch(e){} }
+        else { el.dispatchEvent(new MouseEvent('click', opts)); }
         return {ok:true, msg:'clicked ' + (el.innerText||el.getAttribute('aria-label')||el.tagName).toString().slice(0,60)};
       } catch(err){ return {ok:false, msg:'click error: '+err.message}; }
     })()
@@ -119,11 +121,12 @@ class ActionExecutor(private val context: Context) {
         var interactive = el.closest('a,button,input,select,textarea,[role="button"],[role="link"],[role="checkbox"],[role="radio"],[role="menuitem"],label');
         var target = interactive || el;
         var opts = {bubbles:true, cancelable:true, clientX:$x, clientY:$y};
-        ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t){
+        ['pointerdown','mousedown','pointerup','mouseup'].forEach(function(t){
           var ev = (t.indexOf('pointer')===0 && window.PointerEvent) ? new PointerEvent(t, Object.assign({pointerId:1, isPrimary:true}, opts)) : new MouseEvent(t, opts);
           target.dispatchEvent(ev);
         });
         if (typeof target.click === 'function') { try { target.click(); } catch(e){} }
+        else { target.dispatchEvent(new MouseEvent('click', opts)); }
         return {ok:true, msg:'clicked at ($x,$y) -> ' + (target.innerText||target.tagName).toString().slice(0,60)};
       } catch(err){ return {ok:false, msg:'click_at error: '+err.message}; }
     })()

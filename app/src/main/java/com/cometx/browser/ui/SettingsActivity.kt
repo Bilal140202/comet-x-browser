@@ -137,8 +137,10 @@ class SettingsActivity : Activity() {
 
         header("Agent behavior")
         addNumberField("Max steps per task (4–60)", settings.maxSteps()) { settings.setMaxSteps(it) }
+        body("The agent auto-extends this budget a little while a task is visibly progressing (up to 3 extensions, never above 60) and stops thrashing runs instead of funding them.")
         addCheck("Confirm high-risk actions (purchases, deletes, sends)", settings.confirmHighRisk()) { settings.setConfirmHighRisk(it) }
         addCheck("Agent memory enabled (can be cleared below)", settings.memoryEnabled()) { settings.setMemoryEnabled(it) }
+        addCheck("Skill replay: let AI re-locate elements the recorder missed", settings.skillAiFallback()) { settings.setSkillAiFallback(it) }
         addVisionMode()
 
         header("Browser")

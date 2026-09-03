@@ -108,3 +108,10 @@ class UnparseableOutputException(message: String) : Exception(message)
 
 /** Thrown when the observation is too large for the model's context window (§19). */
 class ContextTooLargeException(message: String) : Exception(message)
+
+/**
+ * Thrown when the resolved candidate cannot read images (Phase 3, expert
+ * review P1-14): surfaced to the engine so it can retry the step with
+ * visionB64=null instead of burning every candidate in the chain.
+ */
+class VisionUnsupportedException(message: String) : Exception(message)

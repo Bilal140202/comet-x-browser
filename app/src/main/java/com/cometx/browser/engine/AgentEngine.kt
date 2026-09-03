@@ -79,6 +79,9 @@ class AgentEngine(
     private var lastActionFailed = false
     private var observationCompressed = false
 
+    /** Set once a model rejects images — vision stays off for the rest of the run. */
+    private var visionDisabledForRun = false
+
     /** §19: shrink an oversized observation (elements + page text). */
     private fun compress(obs: PageObservation): PageObservation = obs.copy(
         elements = obs.elements.take(40),
@@ -97,6 +100,7 @@ class AgentEngine(
         this.forceVisionNext = false
         this.lastActionFailed = false
         this.observationCompressed = false
+        this.visionDisabledForRun = false
         setState(State.RUNNING, "Agent starting")
         listener?.onLog("✦ Goal: $goal")
         skill?.let { listener?.onLog("Skill: ${it.name}") }
@@ -148,14 +152,29 @@ class AgentEngine(
     // ------------------------------------------------------------------ loop
 
     private suspend fun loop() {
-        var step = 0
-        val maxSteps = settings.maxSteps()
+        // Phase 3: adaptive step budget — auto-tuned to the task, extends
+        // itself while the task progresses, structurally capped at 60.
+        val budget = StepBudget.initialFor(settings.maxSteps(), goal)
         val history = mutableListOf<JSONObject>()
         val sigWindow = ArrayDeque<String>()
         var userAnswer: String? = null
+        var lastUrl = ""
+        var loadingStreak = 0
 
         try {
-            while (step < maxSteps && (state == State.RUNNING || state == State.AWAITING_USER)) {
+            while (state == State.RUNNING || state == State.AWAITING_USER) {
+                // STEP BUDGET GATE: extend while the task visibly progresses,
+                // stop when it is exhausted (or the run is thrashing).
+                if (!budget.hasRemaining()) {
+                    if (budget.shouldExtend()) {
+                        budget.extend()
+                        listener?.onLog("⤴ Step budget extended to ${budget.budget} — task is still progressing")
+                    } else {
+                        listener?.onLog("Step budget exhausted (${budget.describe()})", isError = true)
+                        fail("reached the step limit before completing the task")
+                        return
+                    }
+                }
                 // TOP-OF-LOOP takeover gate: pausing here guarantees the engine
                 // re-observes (including anything the user did) before acting.
                 if (takeoverRequested) {
@@ -166,16 +185,24 @@ class AgentEngine(
                     if (answer != null) userAnswer = answer
                     continue
                 }
-                step++
-                listener?.onLog("— Step $step/$maxSteps")
+                budget.consume()
+                listener?.onLog("— Step ${budget.describe()}")
 
                 // 1) OBSERVE -------------------------------------------------
                 val obs = sink.observe()
                 if (obs == null) {
+                    // Loading retries are refunded: they are not decisions.
+                    budget.refund()
+                    loadingStreak++
+                    if (loadingStreak >= 6) {
+                        fail("page never became readable (loading loop)")
+                        return
+                    }
                     listener?.onLog("Page not readable (loading?) — waiting", isError = true)
                     kotlinx.coroutines.delay(1500)
                     continue
                 }
+                loadingStreak = 0
 
                 // 2) UNDERSTAND: injection scan + challenge detection --------
                 val combinedText = obs.textSample + "\n" + obs.elements.joinToString("\n") { it.describe() }
@@ -199,14 +226,15 @@ class AgentEngine(
                     if (state != State.AWAITING_USER) return // timed out → engine already failed
                     setState(State.RUNNING, "resumed after verification")
                     if (answer != null) userAnswer = answer
+                    budget.refund() // human gates never consume the agent's budget
                     continue // re-observe the (possibly solved) page
                 }
 
                 // 3) VISION (policy-gated) -----------------------------------
                 var visionB64: String? = null
-                val wantVision = forceVisionNext ||
-                    visionPolicy.shouldCapture(obsFinal, lastActionFailed, agentRequestedVision = false, stepIndex = step)
-                if (wantVision && step <= maxSteps) {
+                val wantVision = !visionDisabledForRun && (forceVisionNext ||
+                    visionPolicy.shouldCapture(obsFinal, lastActionFailed, agentRequestedVision = false, stepIndex = budget.used))
+                if (wantVision) {
                     listener?.onLog("👁 Capturing screenshot for vision model…")
                     val b64 = sink.screenshotBase64()
                     if (b64 != null) {
@@ -240,7 +268,7 @@ class AgentEngine(
                         ChatMessage(
                             role = "system",
                             text = AgentPrompt.system(
-                                goal, skill, memory, maxSteps,
+                                goal, skill, memory, budget.budget,
                                 injectionWarning = injections.isNotEmpty(),
                                 challengeNote = if (challenge.type != ChallengeResult.NONE) challenge.detail else null,
                                 protocol = protocol
@@ -267,6 +295,13 @@ class AgentEngine(
                     listener?.onLog("⚠ Observation exceeded model context — compressing and retrying")
                     obsFinal = compress(obsFinal)
                     continue
+                } catch (e: com.cometx.browser.ai.VisionUnsupportedException) {
+                    // The landed candidate cannot see: retry this step text-only,
+                    // and don't feed pixels to anyone else this run either.
+                    visionDisabledForRun = true
+                    forceVisionNext = false
+                    listener?.onLog("👁 Model cannot read images — continuing with DOM/accessibility perception", isError = true)
+                    continue
                 } catch (e: Exception) {
                     listener?.onLog("Model error: ${e.message}", isError = true)
                     fail("model call failed: ${e.message}")
@@ -278,6 +313,10 @@ class AgentEngine(
                 userAnswer = null
                 val note = action.optString("note", "")
                 if (note.isNotBlank()) listener?.onLog("· $note")
+                // Phase 3: keep the model aware of its remaining room.
+                if (budget.remaining() <= 3) {
+                    listener?.onLog("· budget note: ${budget.remaining()} step(s) left before budget review")
+                }
 
                 // 6) TERMINAL ACTIONS ----------------------------------------
                 when (action.optString("action")) {
@@ -285,7 +324,7 @@ class AgentEngine(
                         val summary = action.optString("summary", "Task completed")
                         listener?.onLog("✓ $summary")
                         setState(State.COMPLETED, summary)
-                        session?.add(step, "done", summary, "")
+                        session?.add(budget.used, "done", summary, "")
                         memory.addRecentTask(goal, "completed")
                         return
                     }
@@ -304,11 +343,12 @@ class AgentEngine(
                         if (state != State.AWAITING_USER) return // timed out → engine already failed
                         setState(State.RUNNING, "resumed")
                         if (answer != null) userAnswer = answer
-                        history.add(JSONObject().put("step", step).put("action", "ask_user").put("result", "answered"))
+                        history.add(JSONObject().put("step", budget.used).put("action", "ask_user").put("result", "answered"))
+                        budget.refund() // Q&A rounds never consume the budget
                         continue
                     }
-                    "screenshot" -> { forceVisionNext = true; history.add(JSONObject().put("step", step).put("action", "screenshot")); continue }
-                    "request_vision" -> { forceVisionNext = true; history.add(JSONObject().put("step", step).put("action", "request_vision")); continue }
+                    "screenshot" -> { forceVisionNext = true; history.add(JSONObject().put("step", budget.used).put("action", "screenshot")); continue }
+                    "request_vision" -> { forceVisionNext = true; history.add(JSONObject().put("step", budget.used).put("action", "request_vision")); continue }
                 }
 
                 // 7) VALIDATE -------------------------------------------------
@@ -321,7 +361,7 @@ class AgentEngine(
                 if (verdict !is ActionValidator.Verdict.Ok) {
                     val reason = (verdict as ActionValidator.Verdict.Reject).reason
                     listener?.onLog("⚠ Action rejected: $reason", isError = true)
-                    history.add(JSONObject().put("step", step).put("action", action.optString("action")).put("result", "rejected: $reason"))
+                    history.add(JSONObject().put("step", budget.used).put("action", action.optString("action")).put("result", "rejected: $reason"))
                     lastActionFailed = true
                     continue // give the model its own error as feedback
                 }
@@ -336,56 +376,82 @@ class AgentEngine(
                 )
                 if (assessment.risk == SafetyPolicy.Risk.BLOCK) {
                     listener?.onLog("⛔ Blocked: ${assessment.reason}", isError = true)
-                    history.add(JSONObject().put("step", step).put("action", action.optString("action")).put("result", "blocked: ${assessment.reason}"))
+                    history.add(JSONObject().put("step", budget.used).put("action", action.optString("action")).put("result", "blocked: ${assessment.reason}"))
                     lastActionFailed = true
                     continue
                 }
                 if (assessment.risk == SafetyPolicy.Risk.CONFIRM && settings.confirmHighRisk()) {
+                    // Takeover pressed while the confirmation was being raised:
+                    // the user is in charge, the planned action is dropped.
+                    if (takeoverRequested) {
+                        budget.refund()
+                        listener?.onLog("⏸ Takeover accepted — planned action cancelled")
+                        continue
+                    }
                     listener?.onLog("⚠ Confirmation required: ${assessment.reason}")
                     setState(State.AWAITING_CONFIRM, assessment.reason)
                     listener?.onConfirmRequired(action, assessment.reason)
                     val approved = awaitConfirmGate()
-                    if (state != State.AWAITING_CONFIRM) return // timed out or stopped
+                    if (state != State.AWAITING_CONFIRM) return // stopped
+                    if (approved == null) { // timed out — no zombie state machines
+                        fail("confirmation timed out — agent stopped")
+                        return
+                    }
                     setState(State.RUNNING, "resumed")
                     if (!approved) {
                         listener?.onLog("Action denied by user")
-                        history.add(JSONObject().put("step", step).put("action", action.optString("action")).put("result", "denied by user"))
+                        history.add(JSONObject().put("step", budget.used).put("action", action.optString("action")).put("result", "denied by user"))
                         continue
                     }
                 }
 
                 // 9) EXECUTE ---------------------------------------------------
+                // Takeover pressed while planning ran: drop the action, never
+                // execute after the user believes they have control.
+                if (takeoverRequested) {
+                    budget.refund()
+                    listener?.onLog("⏸ Takeover accepted — planned action cancelled")
+                    continue
+                }
                 val result = sink.execute(action)
                 listener?.onLog(if (result.ok) "→ ${result.message}" else "✗ ${result.message}", isError = !result.ok)
                 lastActionFailed = !result.ok
-                session?.add(step, action.optString("action"), result.summary(), note)
-                history.add(
-                    JSONObject().put("step", step)
-                        .put("action", action.optString("action"))
-                        .put("result", if (result.ok) "ok: ${result.message.take(120)}" else "failed: ${result.message.take(120)}")
-                )
+                session?.add(budget.used, action.optString("action"), result.summary(), note)
+                // Extraction results (find_text / find_element / extract / copy)
+                // reach the model as structured data — otherwise they are lost.
+                val historyEntry = JSONObject().put("step", budget.used)
+                    .put("action", action.optString("action"))
+                    .put("result", if (result.ok) "ok: ${result.message.take(120)}" else "failed: ${result.message.take(120)}")
+                if (result.ok && result.data != null) {
+                    val dataStr = result.data.toString()
+                    if (dataStr.length > 4 && dataStr != "{}") historyEntry.put("data", dataStr.take(1500))
+                }
+                history.add(historyEntry)
                 if (action.optString("action") == "remember") {
                     memory.remember(action.optString("key_name"), action.optString("fact"))
                 }
 
-                // 10) LOOP PROTECTION ------------------------------------------
+                // 10) LOOP PROTECTION + PROGRESS MODEL -------------------------
                 val sig = actionSignature(action, obsFinal.url)
                 sigWindow.addLast(sig)
                 while (sigWindow.size > 4) sigWindow.removeFirst()
-                if (sigWindow.size == 4 && sigWindow.toSet().size <= 2) {
+                val repeated = sigWindow.size == 4 && sigWindow.toSet().size <= 2
+                if (repeated) {
                     listener?.onLog("↻ Repetition detected — requesting replan", isError = true)
-                    history.add(JSONObject().put("step", step).put("warning", "you are repeating the same actions; choose a DIFFERENT approach or fail"))
+                    history.add(JSONObject().put("step", budget.used).put("warning", "you are repeating the same actions; choose a DIFFERENT approach or fail"))
                     sigWindow.clear()
                 }
 
-                kotlinx.coroutines.delay(150) // let rendering settle
-            }
+                // Feed the adaptive budget (Phase 3): the extension decision is
+                // made at the top of the next iteration.
+                budget.record(
+                    actionSuccess = result.ok,
+                    urlChanged = lastUrl.isNotEmpty() && obsFinal.url != lastUrl,
+                    repeated = repeated
+                )
+                lastUrl = obsFinal.url
 
-            if (state == State.RUNNING) {
-                if (step >= maxSteps) {
-                    listener?.onLog("Step budget exhausted", isError = true)
-                    fail("reached the step limit before completing the task")
-                }
+                kotlinx.coroutines.delay(150) // let rendering settle
             }
         } catch (ce: CancellationException) {
             // stop() already handled state
@@ -430,12 +496,13 @@ class AgentEngine(
         return answer
     }
 
-    private suspend fun awaitConfirmGate(): Boolean {
+    /** @return true = approved, false = denied, null = timed out (caller must stop). */
+    private suspend fun awaitConfirmGate(): Boolean? {
         var d: kotlinx.coroutines.CompletableDeferred<Boolean>?
         synchronized(gateLock) {
             if (pendingConfirmArrived) {
                 pendingConfirmArrived = false
-                val a = pendingConfirmDecision ?: false
+                val a = pendingConfirmDecision
                 pendingConfirmDecision = null
                 return a
             }
@@ -447,7 +514,7 @@ class AgentEngine(
                 pendingConfirmDecision = null
             }
         }
-        val approved = kotlinx.coroutines.withTimeoutOrNull(PAUSE_TIMEOUT_MS) { d!!.await() } ?: false
+        val approved = kotlinx.coroutines.withTimeoutOrNull(PAUSE_TIMEOUT_MS) { d!!.await() }
         confirmDeferred = null
         return approved
     }

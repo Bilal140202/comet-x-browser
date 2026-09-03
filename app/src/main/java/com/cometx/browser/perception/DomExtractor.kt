@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import android.webkit.WebView
 import com.cometx.browser.util.Logx
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONArray
 import org.json.JSONObject
@@ -92,13 +93,16 @@ object DomExtractor {
      * Evaluates JS that returns an OBJECT and resolves with the JSON text.
      * evaluateJavascript JSON-serializes non-string results itself, which is
      * the safest transport (no double-escaping bugs).
+     *
+     * Cancellation-safe: a resumed-after-cancel callback is dropped instead
+     * of crashing the WebView callback thread (P0 fix, expert review).
      */
     suspend fun evalJs(webView: WebView, js: String): String? = suspendCancellableCoroutine { cont ->
         val main = Handler(Looper.getMainLooper())
         main.post {
             try {
                 webView.evaluateJavascript(js) { result ->
-                    cont.resume(result?.takeIf { it != "null" && it.isNotBlank() })
+                    if (cont.isActive) cont.resume(result?.takeIf { it != "null" && it.isNotBlank() })
                 }
             } catch (e: Exception) {
                 Logx.e("evaluateJavascript failed", e)
@@ -106,6 +110,31 @@ object DomExtractor {
             }
         }
     }
+
+    /**
+     * Waits until the page looks settled: document readyState complete AND
+     * URL stable across two consecutive probes (catches redirects), bounded
+     * by [timeoutMs]. Best effort — never throws, returns early on timeout.
+     */
+    suspend fun waitForSettle(webView: WebView, timeoutMs: Long = 4000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var lastUrl = ""
+        var stableCount = 0
+        while (System.currentTimeMillis() < deadline) {
+            val raw = try { evalJs(webView, SETTLE_PROBE) } catch (_: Exception) { null } ?: return
+            val o = try { JSONObject(raw) } catch (_: Exception) { return }
+            val url = o.optString("url")
+            val ready = o.optString("ready")
+            stableCount = if (ready == "complete" && url == lastUrl) stableCount + 1 else 0
+            lastUrl = url
+            if (stableCount >= 2) return
+            delay(250)
+        }
+    }
+
+    private val SETTLE_PROBE = """
+    (function(){ try { return {ready: document.readyState, url: location.href}; } catch(e) { return {ready:'complete', url:''}; } })()
+    """.trimIndent()
 
     // ------------------------------------------------------------------ JS
     // NOTE: written as a Kotlin raw string; JSON string-literals are produced
@@ -155,7 +184,7 @@ object DomExtractor {
             name: el.getAttribute('name') ? String(el.getAttribute('name')).slice(0,40) : null,
             ph: ph ? ph.slice(0,60) : null,
             text: text || null,
-            value: (tag==='input' && type==='password') ? '[password]' : ((tag==='input'||tag==='textarea') ? String(el.value||'').slice(0,60) : null),
+            value: (tag==='input' && type==='password') ? '[password]' : ((tag==='input'||tag==='textarea') ? (String(el.value||'').length ? '[filled:'+String(el.value||'').length+' chars]' : null) : null),
             href: (tag==='a' && el.href) ? el.href.slice(0,100) : null,
             x:r.x, y:r.y, w:r.w, h:r.h,
             disabled: !!el.disabled,

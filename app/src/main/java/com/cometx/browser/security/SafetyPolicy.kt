@@ -55,7 +55,15 @@ object SafetyPolicy {
             if (kind == "click" && AGREEMENT_TEXT.containsMatchIn(text)) return Assessment(Risk.CONFIRM, "purchase/agreement confirmation on a payment page")
             if (textKind && text.isNotEmpty()) return Assessment(Risk.CONFIRM, "typing/pasting on a payment/checkout page")
             if (kind == "navigate") return Assessment(Risk.CONFIRM, "navigating away from a payment/checkout flow")
+            // Enter submits the focused form — same consequence as a click (expert review P1-11)
+            if (kind == "press_key" && action.optString("key") == "Enter")
+                return Assessment(Risk.CONFIRM, "pressing Enter to submit on a payment/checkout page")
         }
+
+        // Clipboard: password managers leave secrets behind — pasting is
+        // always a human decision, whatever the target (expert review P1-10).
+        if (kind == "paste")
+            return Assessment(Risk.CONFIRM, "pasting clipboard content — verify the destination (the clipboard may hold secrets)")
 
         // Auth-sensitive typing (passwords, security questions, password changes)
         if (textKind && AUTH_URL.containsMatchIn(pageUrl) && PASSWORD_TEXT.containsMatchIn(text))

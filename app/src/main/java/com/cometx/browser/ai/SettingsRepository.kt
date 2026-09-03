@@ -172,6 +172,10 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
     fun memoryEnabled(): Boolean = prefs.getBoolean("memory_enabled", true)
     fun setMemoryEnabled(v: Boolean) = prefs.edit().putBoolean("memory_enabled", v).apply()
 
+    /** Skill replay: when selectors miss, may the model re-locate the element? */
+    fun skillAiFallback(): Boolean = prefs.getBoolean("skill_ai_fallback", true)
+    fun setSkillAiFallback(v: Boolean) = prefs.edit().putBoolean("skill_ai_fallback", v).apply()
+
     fun thirdPartyCookies(): Boolean = prefs.getBoolean("third_party_cookies", false)
     fun setThirdPartyCookies(v: Boolean) = prefs.edit().putBoolean("third_party_cookies", v).apply()
 

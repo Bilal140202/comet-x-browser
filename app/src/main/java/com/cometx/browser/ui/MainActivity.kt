@@ -41,11 +41,16 @@ import com.cometx.browser.perception.ChallengeResult
 import com.cometx.browser.perception.PageObservation
 import com.cometx.browser.perception.VisionPolicy
 import com.cometx.browser.security.SecureStore
+import com.cometx.browser.skills.SkillInterview
+import com.cometx.browser.skills.SkillPlayer
+import com.cometx.browser.skills.SkillRecorder
 import com.cometx.browser.skills.SkillRegistry
+import com.cometx.browser.skills.UserSkillStore
 import com.cometx.browser.util.Logx
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 class MainActivity : Activity() {
 
@@ -56,10 +61,12 @@ class MainActivity : Activity() {
     private lateinit var settings: SettingsRepository
     private lateinit var memory: MemoryStore
     private lateinit var testServer: LocalTestServer
+    private lateinit var recorder: SkillRecorder
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var urlBar: EditText? = null
     private var progress: ProgressBar? = null
+    private lateinit var container: ViewGroup
 
     // ---- providers built once; keys read live from secure store ----
     private lateinit var providers: Map<String, OpenAICompatibleProvider>
@@ -95,8 +102,7 @@ class MainActivity : Activity() {
         router = ModelRouter(settings, providers, ModelCatalog(app))
 
         browser = BrowserController(this)
-
-        val container = findViewById<ViewGroup>(R.id.webContainer)
+        container = findViewById(R.id.webContainer)
         tabs = TabManager(container, { browser.createWebView() }, { syncTabUi() })
         browser.thirdPartyCookiesEnabled = { settings.thirdPartyCookies() }
 
@@ -107,9 +113,62 @@ class MainActivity : Activity() {
                 tabs.tabs.mapIndexed { i, t ->
                     PageObservation.TabInfo(i, t.title.ifBlank { "Untitled" }, t.url, i == tabs.currentIndex)
                 }
-            }, { tabs.currentIndex })
+            }, { tabs.currentIndex },
+                // Tab-level verbs (expert review P0-1): the model can now really use them
+                onOpenTab = { url -> openInNewTab(url) },
+                onSwitchTab = { idx -> runOnUiThread { tabs.switchTo(idx) } },
+                onCloseTab = { idx -> runOnUiThread { tabs.close(idx) } },
+                onDownload = { url -> runOnUiThread { browser.downloadDirect(url) } }
+            )
         )
-        panel = AgentPanelController(this, engine, settings, skills)
+
+        // ---- Phase 3: skills infrastructure ----
+        // Bridges forward events to the panel; they read `panel` lazily so the
+        // creation order (recorder → interview → panel) never matters.
+        fun panelIfReady(): AgentPanelController? = if (::panel.isInitialized) panel else null
+        val recorderBridge = object : SkillRecorder.Listener {
+            override fun onStepCountChanged(count: Int) { panelIfReady()?.recorderListener?.onStepCountChanged(count) }
+            override fun onRecordError(message: String) { panelIfReady()?.recorderListener?.onRecordError(message) }
+        }
+        val interviewBridge = object : SkillInterview.Listener {
+            override fun onQuestion(question: String) { panelIfReady()?.interviewListener?.onQuestion(question) }
+            override fun onLog(line: String) { panelIfReady()?.interviewListener?.onLog(line) }
+            override fun onDraftReady(skill: com.cometx.browser.skills.RecordedSkill, jsonText: String) { panelIfReady()?.interviewListener?.onDraftReady(skill, jsonText) }
+            override fun onError(message: String) { panelIfReady()?.interviewListener?.onError(message) }
+            override fun onEnded() { panelIfReady()?.interviewListener?.onEnded() }
+        }
+        val playerBridge = object : SkillPlayer.Listener {
+            override fun onStepStarted(index: Int, total: Int, description: String) { panelIfReady()?.playerListener?.onStepStarted(index, total, description) }
+            override fun onStepResult(index: Int, ok: Boolean, message: String) { panelIfReady()?.playerListener?.onStepResult(index, ok, message) }
+            override fun onFinished(success: Boolean, summary: String) { panelIfReady()?.playerListener?.onFinished(success, summary) }
+            override suspend fun askSensitiveValue(fieldDescription: String): String? =
+                panelIfReady()?.playerListener?.askSensitiveValue(fieldDescription)
+            override suspend fun confirmStep(message: String): Boolean =
+                panelIfReady()?.playerListener?.confirmStep(message) ?: false
+        }
+
+        recorder = SkillRecorder(scope, recorderBridge)
+        val interview = SkillInterview(router, interviewBridge)
+        val userSkillStore = UserSkillStore(this)
+        panel = AgentPanelController(
+            this, engine, settings, skills,
+            recorder, userSkillStore, interview,
+            playerFactory = {
+                SkillPlayer(
+                    LiveWebViewSink(this, { tabs.currentWebView }, {
+                        tabs.tabs.mapIndexed { i, t ->
+                            PageObservation.TabInfo(i, t.title.ifBlank { "Untitled" }, t.url, i == tabs.currentIndex)
+                        }
+                    }, { tabs.currentIndex }),
+                    { tabs.currentWebView }, router,
+                    aiFallbackEnabled = { settings.skillAiFallback() },
+                    confirmHighRisk = { settings.confirmHighRisk() },
+                    listener = playerBridge
+                )
+            },
+            webViewProvider = { tabs.currentWebView },
+            currentUrlProvider = { tabs.current?.url ?: settings.homepage() }
+        )
         engine.bind(panel)
 
         // ---- top bar ----
@@ -174,6 +233,8 @@ class MainActivity : Activity() {
     fun onPageMeta(view: WebView, title: String?, url: String?) {
         runOnUiThread {
             tabs.updateMeta(view, title, url)
+            // Phase 3: navigation events feed the skill recorder while recording
+            if (::recorder.isInitialized) recorder.onNavigation(url ?: "")
             if (view == tabs.currentWebView) {
                 if (urlBar?.hasFocus() != true) urlBar?.setText(url ?: "")
             }
@@ -277,10 +338,21 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         tabs.currentWebView?.onResume()
+        // Expert review P1-7: re-apply saved base URLs so Settings edits reach
+        // the live providers without a process restart.
+        for ((pid, prov) in providers) {
+            settings.baseUrl(pid)?.let { prov.setBaseUrl(UrlNormalizer.normalize(it)) }
+        }
     }
 
     override fun onDestroy() {
+        if (engine.state == AgentEngine.State.RUNNING || engine.state == AgentEngine.State.AWAITING_USER || engine.state == AgentEngine.State.AWAITING_CONFIRM) {
+            engine.stop()
+        }
+        if (::recorder.isInitialized && recorder.state == SkillRecorder.State.RECORDING) recorder.cancel()
+        scope.cancel()
         if (::testServer.isInitialized) testServer.stop()
+        tabs.destroyAll()
         super.onDestroy()
     }
 }

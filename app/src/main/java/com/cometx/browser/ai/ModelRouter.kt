@@ -47,7 +47,7 @@ class ModelRouter(
     class AgentRequest(
         val role: Role,
         val temperature: Double = 0.2,
-        val maxTokens: Int = 1400,
+        val maxTokens: Int = 2000,   // headroom so long `type` actions don't truncate mid-JSON (expert review P2-33)
         val messagesForProtocol: (AgentProtocol) -> List<ChatMessage>
     )
 
@@ -312,9 +312,13 @@ class ModelRouter(
                                     candidateExhausted = true
                                 }
                                 ProviderErrorKind.VISION_UNSUPPORTED -> {
-                                    // engine asked for vision on a non-vision model: drop images, retry as text
-                                    events.add("${p.displayName}: model cannot read images — using DOM/accessibility perception")
-                                    candidateExhausted = true
+                                    // Phase 3 (expert review P1-14): surface to the
+                                    // engine so it retries the step TEXT-ONLY instead of
+                                    // burning every candidate on an image it can't read.
+                                    logEvents(events)
+                                    throw VisionUnsupportedException(
+                                        "${p.displayName}: ${cand.info.displayName} cannot read images"
+                                    )
                                 }
                                 ProviderErrorKind.NETWORK_ERROR,
                                 ProviderErrorKind.PROVIDER_ERROR,
@@ -352,6 +356,7 @@ class ModelRouter(
                 val delayMs = (500L shl backoffAttempt).coerceAtMost(MAX_BACKOFF_MS)
                 events.add("all providers rate limited — retrying in ${delayMs / 1000}s")
                 logEvents(events)
+                events.clear()   // already reported — don't double-log (expert review P2-21)
                 kotlinx.coroutines.delay(delayMs)
             }
         }
@@ -438,9 +443,15 @@ class ModelRouter(
 
     /**
      * Plain-text chat across the fallback chain (no protocol negotiation —
-     * used by non-agent calls). Retained for compatibility.
+     * used by non-agent calls: /grill-me interview, skill AI assist).
+     * [maxTokens] raised by callers that need long structured output.
      */
-    suspend fun chatWithFallback(role: Role, messages: List<ChatMessage>, temperature: Double = 0.2): String {
+    suspend fun chatWithFallback(
+        role: Role,
+        messages: List<ChatMessage>,
+        temperature: Double = 0.2,
+        maxTokens: Int = 1024
+    ): String {
         val events = mutableListOf<String>()
         var last: Exception? = null
         for (p in chain()) {
@@ -449,9 +460,9 @@ class ModelRouter(
                 try {
                     return when (p) {
                         is OpenAICompatibleProvider -> p.parseContent(
-                            p.chat(messages, cand.info.id, temperature, 1024)
-                        ) ?: p.chat(messages, cand.info.id, temperature, 1024)
-                        else -> p.chat(messages, cand.info.id, temperature, 1024)
+                            p.chat(messages, cand.info.id, temperature, maxTokens)
+                        ) ?: p.chat(messages, cand.info.id, temperature, maxTokens)
+                        else -> p.chat(messages, cand.info.id, temperature, maxTokens)
                     }
                 } catch (e: ProviderException) {
                     last = e

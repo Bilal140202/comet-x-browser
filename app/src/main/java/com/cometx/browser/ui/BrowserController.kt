@@ -74,13 +74,11 @@ class BrowserController(private val activity: Activity) {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url
                 val scheme = url.scheme?.lowercase() ?: return false
-                // Keep http/https in-app; hand everything else to the OS.
+                // Keep http/https in-app; everything else needs a human decision
+                // (a page must never be able to fire intent:// / market:// etc.
+                // silently — expert review P1-13).
                 if (scheme == "http" || scheme == "https") return false
-                try {
-                    onExternalUrl?.invoke(url) ?: activity.startActivity(Intent(Intent.ACTION_VIEW, url))
-                } catch (e: Exception) {
-                    Logx.w("no handler for $scheme")
-                }
+                confirmExternalLaunch(url)
                 return true
             }
 
@@ -100,12 +98,17 @@ class BrowserController(private val activity: Activity) {
             }
 
             override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
+                // Background popups (no user gesture) are ad-spam — reject them
+                // (expert review P1-18).
+                if (!isUserGesture) return false
                 // Popup/new-window capture: create an offscreen WebView to receive
                 // the target URL, then open it as a regular tab.
                 val temp = WebView(view.context)
                 temp.webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
                         (activity as MainActivity).openInNewTab(request.url.toString())
+                        // the transport WebView's job is done — don't leak it
+                        v.destroy()
                         return true
                     }
                 }
@@ -120,7 +123,13 @@ class BrowserController(private val activity: Activity) {
                 filePathCallback: android.webkit.ValueCallback<Array<Uri>>,
                 fileChooserParams: FileChooserParams
             ): Boolean {
-                onFileChooser?.invoke(filePathCallback) ?: run { filePathCallback.onReceiveValue(null) }
+                if (onFileChooser != null) {
+                    onFileChooser?.invoke(filePathCallback)
+                } else {
+                    // Dead click before (expert review P1-17) — say what happened.
+                    android.widget.Toast.makeText(activity, "File upload is not supported yet", android.widget.Toast.LENGTH_SHORT).show()
+                    filePathCallback.onReceiveValue(null)
+                }
                 return true
             }
         }
@@ -130,6 +139,27 @@ class BrowserController(private val activity: Activity) {
         }
 
         return web
+    }
+
+    /** Non-http(s) launch: user-gated (expert review P1-13). */
+    private fun confirmExternalLaunch(url: Uri) {
+        AlertDialog.Builder(activity)
+            .setTitle("Open in another app?")
+            .setMessage("This page wants to hand off to an external app:\n${url.toString().take(160)}")
+            .setPositiveButton("Open") { _, _ ->
+                try {
+                    onExternalUrl?.invoke(url) ?: activity.startActivity(Intent(Intent.ACTION_VIEW, url))
+                } catch (e: Exception) {
+                    Logx.w("no handler for ${url.scheme}")
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** Download entry point for agent-initiated downloads (tab-verb wiring). */
+    fun downloadDirect(url: String) {
+        handleDownload(activity, url, "", "", "")
     }
 
     private fun handleDownload(

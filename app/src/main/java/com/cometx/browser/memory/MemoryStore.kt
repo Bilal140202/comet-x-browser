@@ -37,13 +37,20 @@ class MemoryStore(private val baseDir: File, private val enabled: () -> Boolean)
 
     // ---------- User memory ----------
 
+    // Expert-review P1-19: the agent loop runs on the main thread — file reads
+    // are cached so each step doesn't hit disk. Writes keep the cache hot.
+    private var userMemoryCache: MutableMap<String, String>? = null
+    private var recentCache: List<Triple<String, String, Long>>? = null
+
     fun userMemory(): MutableMap<String, String> {
+        userMemoryCache?.let { return LinkedHashMap(it) }
         val map = linkedMapOf<String, String>()
         val arr = Json.parseArrayOrNull(readFile(userMemoryFile)) ?: return map
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
             map[o.optString("key")] = o.optString("value")
         }
+        userMemoryCache = LinkedHashMap(map)
         return map
     }
 
@@ -54,6 +61,7 @@ class MemoryStore(private val baseDir: File, private val enabled: () -> Boolean)
         val arr = JSONArray()
         for ((k, v) in map) arr.put(Json.obj("key", k, "value", v))
         writeFile(userMemoryFile, arr.toString())
+        userMemoryCache = LinkedHashMap(map)
     }
 
     fun forget(key: String) {
@@ -62,6 +70,7 @@ class MemoryStore(private val baseDir: File, private val enabled: () -> Boolean)
         val arr = JSONArray()
         for ((k, v) in map) arr.put(Json.obj("key", k, "value", v))
         writeFile(userMemoryFile, arr.toString())
+        userMemoryCache = LinkedHashMap(map)
     }
 
     // ---------- Browser memory ----------
@@ -82,15 +91,18 @@ class MemoryStore(private val baseDir: File, private val enabled: () -> Boolean)
         val next = JSONArray().put(Json.obj("goal", goal.take(200), "outcome", outcome.take(60), "at", System.currentTimeMillis()))
         for (i in 0 until minOf(arr.length(), 9)) next.put(arr.optJSONObject(i) ?: continue)
         writeFile(recentFile, next.toString())
+        recentCache = null
     }
 
     fun recentTasks(): List<Triple<String, String, Long>> {
+        recentCache?.let { return it }
         val arr = Json.parseArrayOrNull(readFile(recentFile)) ?: return emptyList()
         val out = mutableListOf<Triple<String, String, Long>>()
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
             out.add(Triple(o.optString("goal"), o.optString("outcome"), o.optLong("at")))
         }
+        recentCache = out
         return out
     }
 
@@ -100,6 +112,8 @@ class MemoryStore(private val baseDir: File, private val enabled: () -> Boolean)
         userMemoryFile.delete()
         recentFile.delete()
         browserStateFile.delete()
+        userMemoryCache = null
+        recentCache = null
     }
 
     fun exportSummary(): JSONObject = Json.obj(

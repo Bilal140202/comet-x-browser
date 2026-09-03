@@ -23,11 +23,19 @@ object Screenshotter {
     const val MAX_WIDTH = 1024
     const val JPEG_QUALITY = 72
 
-    suspend fun capture(webView: WebView): Bitmap? = suspendCancellableCoroutine { cont ->
+    /**
+     * Cancellation-safe + time-bounded (expert review P0-3): a cancelled
+     * continuation is never resumed (no crash from the PixelCopy callback)
+     * and a wedged renderer can stall a step for at most 8s.
+     */
+    suspend fun capture(webView: WebView): Bitmap? =
+        kotlinx.coroutines.withTimeoutOrNull(8_000) { captureInternal(webView) }
+
+    private suspend fun captureInternal(webView: WebView): Bitmap? = suspendCancellableCoroutine { cont ->
         val main = Handler(Looper.getMainLooper())
         main.post {
             try {
-                if (webView.width <= 0 || webView.height <= 0) { cont.resume(null); return@post }
+                if (webView.width <= 0 || webView.height <= 0) { if (cont.isActive) cont.resume(null); return@post }
                 val out = Bitmap.createBitmap(webView.width, webView.height, Bitmap.Config.ARGB_8888)
                 if (android.os.Build.VERSION.SDK_INT >= 26) {
                     val window = (webView.context as? android.app.Activity)?.window
@@ -40,7 +48,7 @@ object Screenshotter {
                                 android.graphics.Rect(loc[0], loc[1], loc[0] + webView.width, loc[1] + webView.height),
                                 out,
                                 { result ->
-                                    cont.resume(if (result == PixelCopy.SUCCESS) out else drawFallback(webView, out))
+                                    if (cont.isActive) cont.resume(if (result == PixelCopy.SUCCESS) out else drawFallback(webView, out))
                                 },
                                 main
                             )
@@ -50,9 +58,9 @@ object Screenshotter {
                         }
                     }
                 }
-                cont.resume(drawFallback(webView, out))
+                if (cont.isActive) cont.resume(drawFallback(webView, out))
             } catch (e: Exception) {
-                cont.resume(null)
+                if (cont.isActive) cont.resume(null)
             }
         }
     }

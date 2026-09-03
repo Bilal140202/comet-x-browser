@@ -80,6 +80,21 @@ class TabManager(
 
     fun closeCurrent() = close(currentIndex)
 
+    /** Activity teardown: detach + destroy every WebView (expert review P1-15). */
+    fun destroyAll() {
+        for (tab in tabs) {
+            container.removeView(tab.webView)
+            try {
+                tab.webView.onPause()
+                tab.webView.removeAllViews()
+                tab.webView.destroy()
+            } catch (_: Exception) {
+            }
+        }
+        tabs.clear()
+        currentIndex = 0
+    }
+
     fun updateMeta(webView: WebView, title: String?, url: String?) {
         tabs.firstOrNull { it.webView == webView }?.let {
             it.title = title ?: it.title
