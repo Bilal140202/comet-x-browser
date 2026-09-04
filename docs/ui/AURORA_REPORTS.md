@@ -2,7 +2,7 @@
 
 > v1.4.0 · branch `ui/comet-expressive-overhaul` · base c9afaf4 (v1.3.0)
 > APK: app-release.apk · 4,859,317 bytes · versionCode 5 (1.4.0)
-> SHA-256: 8f7e817e75bb788f8283ae3b94f391bd9f8e0b2a264646b2426588b74832fddf
+> SHA-256: bd0fea4de4e1bd4017851d2e9191b177d1c3666d98d0f4e4ef74880febd2eaed
 > Tests: **18 suites · 172 tests · 0 failures** (identical to pre-overhaul baseline)
 
 ---
