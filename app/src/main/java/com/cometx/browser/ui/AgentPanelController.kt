@@ -167,6 +167,9 @@ class AgentPanelController(
         buildSkillChips()
         refreshUserSkillChips()
 
+        // cold-start: the engine emits nothing until the first event — show IDLE
+        applyAgentState(AgentEngine.State.IDLE, "")
+
         // reduced-motion: live-cancel the status pulse when the user disables
         // system animations (infinite animator at duration-scale 0 = frame spin)
         activity.contentResolver.registerContentObserver(
@@ -208,6 +211,12 @@ class AgentPanelController(
         statusDot.alpha = 1f
     }
 
+    // last applied status — re-applied on expand() so a RUNNING run keeps
+    // its chip + pulse after the panel is reopened
+    private var lastDotColor: Int? = null
+    private var lastLabel: String? = null
+    private var lastPulse: Boolean = false
+
     private fun dp(n: Int): Int = (n * activity.resources.displayMetrics.density).toInt()
 
     fun isVisible(): Boolean = panel.visibility == View.VISIBLE
@@ -220,6 +229,10 @@ class AgentPanelController(
     fun expand() {
         panel.visibility = View.VISIBLE
         askBar.visibility = View.GONE
+        // re-apply last known status so pulse/chip survive collapse→expand
+        if (lastLabel != null && lastDotColor != null) {
+            applyStatus(lastDotColor!!, lastLabel!!, lastPulse)
+        }
         val from = if (panel.height > 0) panel.height * 0.35f else 120f
         panel.translationY = from
         panel.alpha = 0f
@@ -570,6 +583,9 @@ class AgentPanelController(
     }
 
     private fun applyStatus(color: Int, label: String, pulsing: Boolean) {
+        lastDotColor = color
+        lastLabel = label
+        lastPulse = pulsing
         statusDot.backgroundTintList = ColorStateList.valueOf(color)
         statusText.text = label
         if (pulsing) startPulse() else stopPulse()
@@ -609,6 +625,22 @@ class AgentPanelController(
             logAdapter?.clear()
             logAdapter?.addAll(logLines.map { it.first })
             logAdapter?.notifyDataSetChanged()
+            syncStepCounter(line)
+        }
+    }
+
+    /** Step counter in the header: "→ [3/8] …" and "step N" progress lines. */
+    private fun syncStepCounter(line: String) {
+        val bracket = Regex("→\\s*\\[(\\d+)/(\\d+)\\]").find(line)
+        if (bracket != null) {
+            stepText.text = "${bracket.groupValues[1]} / ${bracket.groupValues[2]}"
+            return
+        }
+        val plain = Regex("(?i)\\bstep (\\d+)\\b").find(line)
+        if (plain != null) {
+            stepText.text = "Step ${plain.groupValues[1]}"
+        } else if (line.startsWith("✓") || line.startsWith("✗") || line.startsWith("■")) {
+            stepText.text = ""
         }
     }
 

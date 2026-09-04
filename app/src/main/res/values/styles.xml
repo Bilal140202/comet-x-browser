@@ -87,19 +87,4 @@
         <item name="iconTint">@color/on_secondary_container</item>
     </style>
 
-    <!-- ============ text ============ -->
-    <style name="Comet.Text" />
-    <style name="Comet.Text.Title" parent="TextAppearance.Material3.TitleMedium">
-        <item name="android:textSize">16sp</item>
-        <item name="android:textColor">@color/on_surface</item>
-    </style>
-    <style name="Comet.Text.Body" parent="TextAppearance.Material3.BodyMedium">
-        <item name="android:textSize">14sp</item>
-        <item name="android:textColor">@color/on_surface_variant</item>
-    </style>
-    <style name="Comet.Text.Label" parent="TextAppearance.Material3.LabelSmall">
-        <item name="android:textSize">11sp</item>
-        <item name="android:textColor">@color/on_surface_variant</item>
-        <item name="android:letterSpacing">0.04</item>
-    </style>
 </resources>

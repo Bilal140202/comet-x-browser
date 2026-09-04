@@ -190,7 +190,7 @@ class SettingsActivity : AppCompatActivity() {
             setTextColor(getColor(com.cometx.browser.R.color.text_primary))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         s.statusLabel = TextView(this).apply {
-            textSize = 11f
+            textSize = 12f
             setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
             gravity = android.view.Gravity.END
         }
@@ -199,7 +199,7 @@ class SettingsActivity : AppCompatActivity() {
 
         card.addView(TextView(this).apply {
             text = providerTags[id]
-            textSize = 11f
+            textSize = 12f
             setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
         })
 
@@ -251,7 +251,7 @@ class SettingsActivity : AppCompatActivity() {
             }
             card.addView(urlInput, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(2)) })
             val urlHint = TextView(this).apply {
-                textSize = 11f
+                textSize = 12f
                 setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
             }
             card.addView(urlHint, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(6)) })
@@ -284,7 +284,7 @@ class SettingsActivity : AppCompatActivity() {
         // -- unsaved indicator
         s.dirtyDot = TextView(this).apply {
             text = "unsaved — Test & Enable will save it"
-            textSize = 11f
+            textSize = 12f
             setTextColor(getColor(com.cometx.browser.R.color.accent_bright))
             visibility = android.view.View.GONE
         }
@@ -315,7 +315,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun buildAdvanced(box: LinearLayout, id: String, p: OpenAICompatibleProvider) {
         box.addView(TextView(this).apply {
             text = "Everything here is OPTIONAL — AUTO handles models, protocols and fallbacks for you."
-            textSize = 11f
+            textSize = 12f
             setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
         })
         box.addView(TextView(this).apply {
@@ -342,7 +342,7 @@ class SettingsActivity : AppCompatActivity() {
 
         box.addView(TextView(this).apply {
             text = "Per-role overrides (MANUAL mode only — AUTO ignores these):"
-            textSize = 11f
+            textSize = 12f
             setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
             setPadding(0, dp(6), 0, dp(2))
         })
@@ -350,7 +350,7 @@ class SettingsActivity : AppCompatActivity() {
 
         box.addView(TextView(this).apply {
             text = "Cache: " + (settings.lastDiagnostics(id)?.optString("providerName")?.let { "last test stored" } ?: "no test run yet")
-            textSize = 11f
+            textSize = 12f
             setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
             setPadding(0, dp(8), 0, 0)
         })
@@ -706,7 +706,7 @@ class SettingsActivity : AppCompatActivity() {
             text = label
             isAllCaps = false
             textSize = 13f
-            cornerRadius = dp(20)
+            cornerRadius = dp(22)
             insetTop = 0
             insetBottom = 0
             minHeight = dp(44)

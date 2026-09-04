@@ -49,8 +49,10 @@
     <ListView
         android:id="@+id/tabList"
         android:layout_width="match_parent"
-        android:layout_height="320dp"
+        android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
+        android:paddingHorizontal="8dp"
+        android:clipToPadding="false"
         android:divider="@null"
         android:dividerHeight="0dp"
         android:scrollbars="none" />

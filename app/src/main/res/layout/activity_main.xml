@@ -164,7 +164,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:layout_marginHorizontal="12dp"
-        android:layout_marginBottom="10dp"
+        android:layout_marginBottom="12dp"
         android:paddingHorizontal="16dp"
         android:background="@drawable/bg_askbar"
         android:elevation="2dp"
@@ -241,7 +241,7 @@
                 android:layout_marginStart="10dp"
                 android:text="@string/agent_idle"
                 android:textColor="@color/on_surface"
-                android:textSize="15sp"
+                android:textSize="16sp"
                 android:textStyle="bold"
                 android:singleLine="true"
                 android:ellipsize="end" />
@@ -432,7 +432,8 @@
         <ListView
             android:id="@+id/logList"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:layout_marginTop="8dp"
             android:divider="@color/outline_variant"
             android:dividerHeight="1dp"
