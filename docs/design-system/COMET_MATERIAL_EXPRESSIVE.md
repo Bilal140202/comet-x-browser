@@ -77,7 +77,7 @@ Line height: `lineSpacingExtra` (API 26-safe; `android:lineHeight` only in value
 
 **Shape**: extraSmall 8 · small 12 (inputs/goal/answer) · medium 16 (chips = half of 32dp) ·
 large 20 (cards/provider blocks/log surface) · extraLarge 28 (agent sheet top corners) ·
-**full pill** (buttons radius=h/2, url bar 22, banner buttons) · drag handle 2.
+**full pill** (buttons radius=22 on 44dp height, url bar 22, banner buttons) · drag handle 2.
 
 **Spacing** (4dp grid): gutter 16 · top bar 56dp · url bar 44dp · askbar pill 52dp
 (12dp side+bottom margins) · panel header 56dp, panel padding 16 · chips 32dp h ·
@@ -93,7 +93,7 @@ sheets/dialogs M3 defaults.
 |---|---|---|---|
 | Micro (ripple, chip crossfade, focus border) | 100ms | standard | color/alpha |
 | Panel expand | 280ms | emphasized | translateY h→0 + alpha 0→1 |
-| Panel collapse | 200ms | accelerate (0.3,0,0.8,0.15) | translateY 0→h + alpha→0 → GONE |
+| Panel collapse | instant GONE + ask-bar 200ms fade-in | accelerate | state-first (regression gate); the ask-bar entrance carries the transition |
 | Banner in / out | 200ms / 150ms | emphasized / accelerate | translateY −24→0 + alpha / alpha→0 + y→−16 |
 | answerRow reveal | 200ms | emphasized | alpha + translateY 8→0 |
 | Status pulse (RUNNING / REC only) | 1200ms ∞ | keyframes 1→0.45→1 | dot alpha |
@@ -127,7 +127,7 @@ CPU spin — battery bug). `animateLayoutChanges=false` everywhere.
 | COMPLETED | success | ✓ Completed | — |
 | FAILED | danger | ✗ Failed — … | — |
 | CANCELLED | onSurfaceVariant | ■ Stopped | neutral, NOT error |
-| REC (overlay) | — | askBarText danger routing | pulse on askbar dot too |
+| REC (overlay) | — | askBarText danger routing | text recolor only — the ask bar carries no dot |
 | Interview | primary (no pulse) | "🎙 Interview — answer below" | separate writer → same helper |
 
 Helper owns styling for BOTH writer sites (engine map + interview listener). Panel bg is
