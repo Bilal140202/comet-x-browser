@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- decorative sheet handle 24x4dp -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/outline_variant" />
+    <corners android:radius="2dp" />
+    <size android:width="24dp" android:height="4dp" />
+</shape>

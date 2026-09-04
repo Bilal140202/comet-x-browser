@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- input field: small shape (12dp) on surfaceContainer -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/surface_container" />
-    <corners android:radius="12dp" />
+    <solid android:color="@color/surface_container_high" />
+    <corners android:radius="16dp" />
     <stroke android:width="1dp" android:color="@color/outline_variant" />
 </shape>

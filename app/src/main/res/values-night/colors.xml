@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      COMET MATERIAL EXPRESSIVE — dark scheme ("deep space + comet violet").
+      Shipped-palette values are preserved VERBATIM for continuity
+      (background/surface/surface_high/chip_bg/divider/text/accent family).
+      Light scheme: values/colors.xml.
+    -->
+
+    <!-- ================= surfaces ================= -->
+    <color name="background">#0E1116</color>
+    <color name="surface">#161B22</color>
+    <color name="surface_low">#161B22</color>
+    <color name="surface_container">#1D242E</color>
+    <color name="surface_container_high">#242B36</color>
+    <color name="surface_container_highest">#2C3441</color>
+    <color name="on_surface">#E6EDF3</color>
+    <color name="on_surface_variant">#8B949E</color>
+    <color name="outline">#5B6570</color>
+    <color name="outline_variant">#2A313C</color>
+
+    <!-- ================= primary (comet violet) ================= -->
+    <color name="primary">#A78BFA</color>
+    <color name="on_primary">#23124D</color>
+    <color name="primary_container">#4C3A75</color>
+    <color name="on_primary_container">#EADDFF</color>
+    <!-- fixed brand accent: never used behind text; progress tint, sparkle, focus -->
+    <color name="accent">#8B5CF6</color>
+
+    <!-- ================= secondary ================= -->
+    <color name="secondary">#A9B3C1</color>
+    <color name="on_secondary">#1A2230</color>
+    <color name="secondary_container">#2E3644</color>
+    <color name="on_secondary_container">#DCE3EC</color>
+
+    <!-- ================= tertiary / info ================= -->
+    <color name="tertiary">#58A6FF</color>
+    <color name="on_tertiary">#06172B</color>
+    <color name="tertiary_container">#10304F</color>
+    <color name="on_tertiary_container">#D3E3FD</color>
+
+    <!-- ================= status ================= -->
+    <color name="error">#F85149</color>
+    <color name="on_error">#490F0C</color>
+    <color name="error_container">#3D1512</color>
+    <color name="on_error_container">#FFD9D6</color>
+    <color name="success">#3FB950</color>
+    <color name="on_success">#0A2E12</color>
+    <color name="success_container">#0F3D18</color>
+    <color name="on_success_container">#9CE8AF</color>
+    <color name="warning">#D29922</color>
+    <color name="on_warning">#1F1600</color>
+    <color name="warning_container">#3B2E04</color>
+    <color name="on_warning_container">#F5D87A</color>
+
+    <!-- ================= inverse / scrim ================= -->
+    <color name="inverse_surface">#E6E1E9</color>
+    <color name="inverse_on_surface">#1B1B21</color>
+    <color name="inverse_primary">#6D28D9</color>
+    <color name="scrim">#000000</color>
+
+    <!-- ============================================================
+         LEGACY ALIASES — FUNCTIONALITY LOCK §B (must mirror values/)
+         ============================================================ -->
+    <color name="surface_high">@color/surface_container</color>
+    <color name="chip_bg">@color/surface_container_high</color>
+    <color name="divider">@color/outline_variant</color>
+    <color name="text_primary">@color/on_surface</color>
+    <color name="text_secondary">@color/on_surface_variant</color>
+    <color name="accent_bright">@color/primary</color>
+    <color name="accent_dim">@color/primary_container</color>
+    <color name="danger">@color/error</color>
+</resources>

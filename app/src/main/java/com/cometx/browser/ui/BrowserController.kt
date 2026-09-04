@@ -2,7 +2,6 @@ package com.cometx.browser.ui
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
@@ -19,6 +18,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.cometx.browser.R
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.cometx.browser.util.Logx
 
 /**
@@ -143,7 +143,7 @@ class BrowserController(private val activity: Activity) {
 
     /** Non-http(s) launch: user-gated (expert review P1-13). */
     private fun confirmExternalLaunch(url: Uri) {
-        AlertDialog.Builder(activity)
+        MaterialAlertDialogBuilder(activity)
             .setTitle("Open in another app?")
             .setMessage("This page wants to hand off to an external app:\n${url.toString().take(160)}")
             .setPositiveButton("Open") { _, _ ->
@@ -186,7 +186,7 @@ class BrowserController(private val activity: Activity) {
             }
         }
         if (risky) {
-            AlertDialog.Builder(context)
+            MaterialAlertDialogBuilder(context)
                 .setTitle("Download executable file?")
                 .setMessage("This file type can run code on your device:\n${url.take(160)}")
                 .setPositiveButton("Download") { _, _ -> enqueue() }

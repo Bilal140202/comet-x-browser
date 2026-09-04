@@ -1,17 +1,74 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Comet-X palette: deep space + comet violet -->
-    <color name="background">#0E1116</color>
-    <color name="surface">#161B22</color>
-    <color name="surface_high">#1D242E</color>
-    <color name="divider">#2A313C</color>
-    <color name="text_primary">#E6EDF3</color>
-    <color name="text_secondary">#8B949E</color>
-    <color name="accent">#8B5CF6</color>
-    <color name="accent_bright">#A78BFA</color>
-    <color name="accent_dim">#4C3A75</color>
-    <color name="success">#3FB950</color>
-    <color name="warning">#D29922</color>
-    <color name="danger">#F85149</color>
-    <color name="chip_bg">#242B36</color>
+    <!--
+      COMET MATERIAL EXPRESSIVE — light scheme.
+      Reference: docs/design-system/COMET_MATERIAL_EXPRESSIVE.md
+      Dark scheme: values-night/colors.xml (preserves the shipped deep-space palette verbatim).
+    -->
+
+    <!-- ================= surfaces ================= -->
+    <color name="background">#FCFBFF</color>
+    <color name="surface">#F7F4FB</color>
+    <color name="surface_low">#F1EDF8</color>
+    <color name="surface_container">#F0ECF7</color>
+    <color name="surface_container_high">#EAE5F4</color>
+    <color name="surface_container_highest">#E2DCF0</color>
+    <color name="on_surface">#1B1A22</color>
+    <color name="on_surface_variant">#494657</color>
+    <color name="outline">#7A7589</color>
+    <color name="outline_variant">#C9C3D8</color>
+
+    <!-- ================= primary (comet violet) ================= -->
+    <color name="primary">#6D28D9</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="primary_container">#EADDFF</color>
+    <color name="on_primary_container">#2A0B66</color>
+    <!-- fixed brand accent: never used behind text; progress tint, sparkle, focus -->
+    <color name="accent">#6D28D9</color>
+
+    <!-- ================= secondary ================= -->
+    <color name="secondary">#625F71</color>
+    <color name="on_secondary">#FFFFFF</color>
+    <color name="secondary_container">#E4E0F1</color>
+    <color name="on_secondary_container">#1E1B2E</color>
+
+    <!-- ================= tertiary / info ================= -->
+    <color name="tertiary">#0B57D0</color>
+    <color name="on_tertiary">#FFFFFF</color>
+    <color name="tertiary_container">#D3E3FD</color>
+    <color name="on_tertiary_container">#041E49</color>
+
+    <!-- ================= status ================= -->
+    <color name="error">#B3261E</color>
+    <color name="on_error">#FFFFFF</color>
+    <color name="error_container">#FBDBD8</color>
+    <color name="on_error_container">#410E0B</color>
+    <color name="success">#1A7F37</color>
+    <color name="on_success">#FFFFFF</color>
+    <color name="success_container">#D7F2DC</color>
+    <color name="on_success_container">#0B4D16</color>
+    <color name="warning">#8A5A00</color>
+    <color name="on_warning">#FFFFFF</color>
+    <color name="warning_container">#FCE8B0</color>
+    <color name="on_warning_container">#4A3400</color>
+
+    <!-- ================= inverse / scrim ================= -->
+    <color name="inverse_surface">#2E3038</color>
+    <color name="inverse_on_surface">#F1F0F7</color>
+    <color name="inverse_primary">#A78BFA</color>
+    <color name="scrim">#000000</color>
+
+    <!-- ============================================================
+         LEGACY ALIASES — FUNCTIONALITY LOCK §B.
+         Old code (Kotlin getColor / XML refs) keeps compiling and now
+         resolves to the token system. Defined in BOTH configs.
+         ============================================================ -->
+    <color name="surface_high">@color/surface_container</color>
+    <color name="chip_bg">@color/surface_container_high</color>
+    <color name="divider">@color/outline_variant</color>
+    <color name="text_primary">@color/on_surface</color>
+    <color name="text_secondary">@color/on_surface_variant</color>
+    <color name="accent_bright">@color/primary</color>
+    <color name="accent_dim">@color/primary_container</color>
+    <color name="danger">@color/error</color>
 </resources>

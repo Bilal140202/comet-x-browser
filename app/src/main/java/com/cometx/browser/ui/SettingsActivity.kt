@@ -1,18 +1,15 @@
 package com.cometx.browser.ui
 
-import android.app.Activity
-import android.app.AlertDialog
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import com.cometx.browser.ai.ConnectionDiagnostics
 import com.cometx.browser.ai.CustomOpenAIProvider
 import com.cometx.browser.ai.GroqProvider
@@ -25,6 +22,9 @@ import com.cometx.browser.ai.OpenRouterProvider
 import com.cometx.browser.ai.ProviderException
 import com.cometx.browser.ai.SettingsRepository
 import com.cometx.browser.ai.UrlNormalizer
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.cometx.browser.memory.MemoryStore
 import com.cometx.browser.security.SecureStore
 import kotlinx.coroutines.CoroutineScope
@@ -48,7 +48,7 @@ import java.util.Locale
  * required. Includes the Agent Compatibility self-test (§26) and the AI event
  * log viewer (§36/§37).
  */
-class SettingsActivity : Activity() {
+class SettingsActivity : AppCompatActivity() {
 
     private lateinit var settings: SettingsRepository
     private lateinit var secure: SecureStore
@@ -80,7 +80,7 @@ class SettingsActivity : Activity() {
         var dirtyDot: TextView? = null
         var statusLabel: TextView? = null
         var autoLabel: TextView? = null
-        var testButton: Button? = null
+        var testButton: MaterialButton? = null
         var testInProgress: Boolean = false
 
         fun isDirty(): Boolean = keyText != savedKey || urlText != savedUrl
@@ -149,12 +149,12 @@ class SettingsActivity : Activity() {
 
         header("Memory")
         body(memorySummary())
-        val viewBtn = Button(this); viewBtn.text = "View memory"
-        val clearBtn = Button(this); clearBtn.text = "Clear memory"
+        val viewBtn = actionButton("View memory", Tonal.TONAL)
+        val clearBtn = actionButton("Clear memory", Tonal.TONAL)
         row(viewBtn, clearBtn)
         viewBtn.setOnClickListener { showMemory() }
         clearBtn.setOnClickListener {
-            AlertDialog.Builder(this)
+            MaterialAlertDialogBuilder(this)
                 .setTitle("Clear all memory?")
                 .setMessage("User memory, recent tasks and browser state will be deleted.")
                 .setPositiveButton("Clear") { _, _ -> memory.clearAll(); buildUi() }
@@ -175,8 +175,8 @@ class SettingsActivity : Activity() {
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = getDrawable(com.cometx.browser.R.drawable.bg_panel_input)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = getDrawable(com.cometx.browser.R.drawable.bg_card)
         }
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         lp.setMargins(0, dp(6), 0, dp(6))
@@ -204,7 +204,7 @@ class SettingsActivity : Activity() {
         })
 
         // -- enabled (fallback chain membership)
-        val enabled = CheckBox(this).apply {
+        val enabled = MaterialSwitch(this).apply {
             text = "Enabled — included in fallback"
             textSize = 13f
             setTextColor(getColor(com.cometx.browser.R.color.text_primary))
@@ -277,7 +277,7 @@ class SettingsActivity : Activity() {
         card.addView(s.autoLabel)
 
         // -- Test & Enable (the ONLY button a normal user ever needs)
-        val test = Button(this).apply { text = "Test & Enable" }
+        val test = actionButton("Test & Enable", Tonal.FILL)
         s.testButton = test
         card.addView(test, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(6), 0, dp(2)) })
 
@@ -291,7 +291,7 @@ class SettingsActivity : Activity() {
         card.addView(s.dirtyDot)
 
         // -- Advanced disclosure (optional overrides, §13)
-        val advToggle = Button(this).apply { text = if (advancedExpanded[id] == true) "Advanced ▴" else "Advanced ▾"; textSize = 11f }
+        val advToggle = actionButton(if (advancedExpanded[id] == true) "Advanced ▴" else "Advanced ▾", Tonal.TEXT).apply { textSize = 12f }
         card.addView(advToggle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(2), 0, 0) })
         val advBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -354,7 +354,7 @@ class SettingsActivity : Activity() {
             setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
             setPadding(0, dp(8), 0, 0)
         })
-        val clearCache = Button(this).apply { text = "Forget discovered models (refresh cache)"; textSize = 11f }
+        val clearCache = actionButton("Forget discovered models (refresh cache)", Tonal.TEXT).apply { textSize = 12f; isAllCaps = false }
         box.addView(clearCache, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         clearCache.setOnClickListener {
             catalog.invalidate(id)
@@ -404,7 +404,7 @@ class SettingsActivity : Activity() {
                             setText(saved ?: "")
                             hint = "exact model id served by this provider"
                         }
-                        AlertDialog.Builder(this@SettingsActivity)
+                        MaterialAlertDialogBuilder(this@SettingsActivity)
                             .setTitle("${providerNames[id]} · ${role.name.lowercase()}")
                             .setMessage("Type the exact model id. Blank falls back to AUTO.")
                             .setView(input)
@@ -476,7 +476,7 @@ class SettingsActivity : Activity() {
                 settings.setLastTest(id, false, error ?: "failed")
             }
             s.testInProgress = false
-            AlertDialog.Builder(this@SettingsActivity)
+            MaterialAlertDialogBuilder(this@SettingsActivity)
                 .setTitle(
                     when {
                         report?.ready == true -> "✓ Connected to ${providerNames[id]}"
@@ -496,12 +496,12 @@ class SettingsActivity : Activity() {
     private fun addDiagnosticsButtons() {
         body("Run a full agent compatibility rehearsal, or inspect automatic fallback decisions. " +
             "Diagnostics never display API keys.")
-        val compatBtn = Button(this); compatBtn.text = "Run Agent Compatibility Test"
+        val compatBtn = actionButton("Run Agent Compatibility Test", Tonal.TONAL)
         root.addView(compatBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         compatBtn.setOnClickListener { runCompatibilityTest() }
 
-        val logBtn = Button(this); logBtn.text = "View AI event log"
-        val clearLogBtn = Button(this); clearLogBtn.text = "Clear log"
+        val logBtn = actionButton("View AI event log", Tonal.TONAL)
+        val clearLogBtn = actionButton("Clear log", Tonal.TEXT)
         row(logBtn, clearLogBtn)
         logBtn.setOnClickListener { showAiLog() }
         clearLogBtn.setOnClickListener { settings.clearAiLog(); toast("AI event log cleared") }
@@ -512,7 +512,7 @@ class SettingsActivity : Activity() {
         if (ready.isEmpty()) { toast("Test & Enable a provider first"); return }
         val ids = ready.map { it.key }
         var chosen = ids.first()
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Run on which provider?")
             .setSingleChoiceItems(ids.map { providerNames[it] }.toTypedArray(), 0) { _, which -> chosen = ids[which] }
             .setPositiveButton("Run") { _, _ -> doCompatibilityTest(chosen) }
@@ -522,7 +522,7 @@ class SettingsActivity : Activity() {
 
     private fun doCompatibilityTest(id: String) {
         val p = providers[id] ?: return
-        val dialog = AlertDialog.Builder(this).setTitle("Agent Compatibility Test").setMessage("Running…").show()
+        val dialog = MaterialAlertDialogBuilder(this).setTitle("Agent Compatibility Test").setMessage("Running…").show()
         uiScope.launch {
             val text = try {
                 ConnectionDiagnostics(catalog).compatibilitySelfTest(p)
@@ -530,7 +530,7 @@ class SettingsActivity : Activity() {
                 "Compatibility test failed: ${e.message}"
             }
             runOnUiThread {
-                AlertDialog.Builder(this@SettingsActivity)
+                MaterialAlertDialogBuilder(this@SettingsActivity)
                     .setTitle("COMET-X AI COMPATIBILITY")
                     .setMessage(text)
                     .setPositiveButton("OK", null)
@@ -546,7 +546,7 @@ class SettingsActivity : Activity() {
         val text = if (log.isEmpty()) "(empty)" else buildString {
             for ((ts, line) in log.reversed()) appendLine("${fmt.format(Date(ts))}  $line")
         }
-        AlertDialog.Builder(this).setTitle("AI event log — automatic fallbacks & switches").setMessage(text)
+        MaterialAlertDialogBuilder(this).setTitle("AI event log — automatic fallbacks & switches").setMessage(text)
             .setPositiveButton("Close", null)
             .show()
     }
@@ -608,7 +608,7 @@ class SettingsActivity : Activity() {
     }
 
     private fun addCheck(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-        val cb = CheckBox(this)
+        val cb = MaterialSwitch(this)
         cb.text = label
         cb.textSize = 13f
         cb.isChecked = checked
@@ -653,7 +653,7 @@ class SettingsActivity : Activity() {
             recent.forEach { (g, o, _) -> appendLine("• ${g.take(60)} → $o") }
             if (um.isEmpty() && recent.isEmpty()) appendLine("(empty)")
         }
-        AlertDialog.Builder(this).setTitle("Agent memory").setMessage(text)
+        MaterialAlertDialogBuilder(this).setTitle("Agent memory").setMessage(text)
             .setPositiveButton("Close", null)
             .setNeutralButton("Clear all") { _, _ -> memory.clearAll(); buildUi() }
             .show()
@@ -662,9 +662,12 @@ class SettingsActivity : Activity() {
     private fun header(text: String) {
         val tv = TextView(this)
         tv.text = text
-        tv.textSize = 19f
-        tv.setTextColor(getColor(com.cometx.browser.R.color.accent_bright))
-        root.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(18), 0, dp(6)) })
+        tv.textSize = 13f
+        tv.letterSpacing = 0.06f
+        tv.isAllCaps = true
+        tv.setTypeface(tv.typeface, android.graphics.Typeface.BOLD)
+        tv.setTextColor(getColor(com.cometx.browser.R.color.primary))
+        root.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(22), 0, dp(10)) })
     }
 
     private fun body(text: String) {
@@ -675,7 +678,7 @@ class SettingsActivity : Activity() {
         root.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(8)) })
     }
 
-    private fun row(a: Button, b: Button) {
+    private fun row(a: MaterialButton, b: MaterialButton) {
         val r = LinearLayout(this)
         r.orientation = LinearLayout.HORIZONTAL
         val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -687,6 +690,28 @@ class SettingsActivity : Activity() {
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
     private fun dp(n: Int): Int = (n * resources.displayMetrics.density).toInt()
+
+    // ------------------------------------------------- comet component factory
+
+    private enum class Tonal { FILL, TONAL, TEXT }
+
+    /** Full-pill action button in one of the three M3 tonal roles. */
+    private fun actionButton(label: String, kind: Tonal): MaterialButton {
+        val attr = when (kind) {
+            Tonal.FILL -> com.google.android.material.R.attr.materialButtonStyle
+            Tonal.TONAL -> com.cometx.browser.R.attr.cometButtonTonalStyle
+            Tonal.TEXT -> com.cometx.browser.R.attr.cometButtonTextStyle
+        }
+        return MaterialButton(this, null, attr).apply {
+            text = label
+            isAllCaps = false
+            textSize = 13f
+            cornerRadius = dp(20)
+            insetTop = 0
+            insetBottom = 0
+            minHeight = dp(44)
+        }
+    }
 
     override fun onDestroy() {
         super.onDestroy()

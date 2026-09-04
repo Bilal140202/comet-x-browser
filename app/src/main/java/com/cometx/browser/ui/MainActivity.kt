@@ -1,8 +1,6 @@
 package com.cometx.browser.ui
 
 import android.annotation.SuppressLint
-import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -12,7 +10,6 @@ import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebStorage
 import android.webkit.WebView
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -21,6 +18,8 @@ import android.widget.PopupMenu
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.cometx.browser.CometApp
 import com.cometx.browser.R
 import com.cometx.browser.ai.CustomOpenAIProvider
@@ -52,7 +51,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
 
     private lateinit var browser: BrowserController
     private lateinit var tabs: TabManager
@@ -273,7 +272,7 @@ class MainActivity : Activity() {
     }
 
     private fun confirmClearData() {
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Clear browsing data?")
             .setMessage("Cookies, site storage and cache will be removed. Agent memory is not affected (manage it in Settings).")
             .setPositiveButton("Clear") { _, _ ->
@@ -301,26 +300,54 @@ class MainActivity : Activity() {
     }
 
     private fun showTabDialog() {
-        val items = tabs.titles()
-        val listItems = items.mapIndexed { i, (t, u) -> "${i + 1}. $t" + (if (i == tabs.currentIndex) "  ●" else "") }
-        val lv = ListView(this)
-        lv.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, listItems)
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Tabs (${items.size})")
-            .setView(lv)
-            .setPositiveButton("New tab") { _, _ -> tabs.newTab(settings.homepage()) }
-            .setNegativeButton("Close", null)
-            .create()
-        lv.setOnItemClickListener { _, _, which, _ ->
-            tabs.switchTo(which)
-            dialog.dismiss()
-        }
-        lv.setOnItemLongClickListener { _, _, which, _ ->
+        val snapshot = tabs.titles()
+        val activeIndex = tabs.currentIndex
+        val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.sheet_tabs, null)
+        view.findViewById<TextView>(R.id.tabCount).text = "Tabs (${snapshot.size})"
+        val list = view.findViewById<ListView>(R.id.tabList)
+        list.adapter = TabSheetAdapter(snapshot, activeIndex) { which ->
             tabs.close(which)
-            dialog.dismiss()
+            sheet.dismiss()
+        }
+        list.setOnItemClickListener { _, _, which, _ ->
+            tabs.switchTo(which)
+            sheet.dismiss()
+        }
+        list.setOnItemLongClickListener { _, _, which, _ ->
+            tabs.close(which)
+            sheet.dismiss()
             true
         }
-        dialog.show()
+        view.findViewById<View>(R.id.btnNewTab).setOnClickListener {
+            tabs.newTab(settings.homepage())
+            sheet.dismiss()
+        }
+        sheet.setContentView(view)
+        sheet.show()
+    }
+
+    /** Tab switcher rows: letter avatar + title/url + close; active tab highlighted. */
+    private inner class TabSheetAdapter(
+        private val items: List<Pair<String, String>>,
+        private val active: Int,
+        private val onClose: (Int) -> Unit
+    ) : android.widget.BaseAdapter() {
+        override fun getCount(): Int = items.size
+        override fun getItem(position: Int): Pair<String, String> = items[position]
+        override fun getItemId(position: Int): Long = position.toLong()
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+            val row = convertView ?: layoutInflater.inflate(R.layout.item_tab, parent, false)
+            val (title, url) = items[position]
+            row.findViewById<TextView>(R.id.tabTitle).text = title
+            row.findViewById<TextView>(R.id.tabUrl).text = url
+            row.findViewById<TextView>(R.id.tabAvatar).text =
+                title.trim().take(1).uppercase().ifBlank { "?" }
+            row.isSelected = position == active
+            row.findViewById<View>(R.id.btnCloseTab).setOnClickListener { onClose(position) }
+            return row
+        }
     }
 
     override fun onBackPressed() {
@@ -350,6 +377,7 @@ class MainActivity : Activity() {
             engine.stop()
         }
         if (::recorder.isInitialized && recorder.state == SkillRecorder.State.RECORDING) recorder.cancel()
+        if (::panel.isInitialized) panel.dispose()
         scope.cancel()
         if (::testServer.isInitialized) testServer.stop()
         tabs.destroyAll()

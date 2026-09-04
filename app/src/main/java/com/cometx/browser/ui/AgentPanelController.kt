@@ -1,11 +1,16 @@
 package com.cometx.browser.ui
 
+import android.animation.ValueAnimator
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.res.ColorStateList
+import android.database.ContentObserver
+import android.provider.Settings
 import android.view.View
+import android.view.ViewGroup
+import android.view.animation.PathInterpolator
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -15,6 +20,7 @@ import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import com.cometx.browser.R
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.cometx.browser.ai.ModelRouter
 import com.cometx.browser.ai.SettingsRepository
 import com.cometx.browser.engine.AgentEngine
@@ -33,6 +39,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import kotlin.coroutines.resume
+
+/** M3 emphasized easing (0.2, 0, 0, 1) — motion system §5. */
+private val EMPHASIZED = PathInterpolator(0.2f, 0f, 0f, 1f)
+private val ACCELERATE = PathInterpolator(0.3f, 0f, 0.8f, 0.15f)
 
 /**
  * AgentPanelController — the agent UI: goal input, skills, live log, control
@@ -80,8 +90,16 @@ class AgentPanelController(
     private var answerInput: EditText
     private var logList: ListView
     private val logLines = mutableListOf<Pair<String, Boolean>>()
-    private var logAdapter: ArrayAdapter<String>? = null
+    private var logAdapter: CometLogAdapter? = null
     private var selectedSkillId: String? = null
+
+    // ---- motion system state ----
+    private var pulse: ValueAnimator? = null
+    private val motionObserver = object : ContentObserver(null) {
+        override fun onChange(selfChange: Boolean) {
+            if (!animationsOn()) stopPulse()
+        }
+    }
 
     /** True while /grill-me owns the answer bar. */
     private var interviewActive = false
@@ -108,7 +126,7 @@ class AgentPanelController(
         answerInput = activity.findViewById(R.id.answerInput)
         logList = activity.findViewById(R.id.logList)
 
-        logAdapter = ArrayAdapter(activity, R.layout.item_log, R.id.logLine, logLines.map { it.first }.toMutableList())
+        logAdapter = CometLogAdapter(activity, R.layout.item_log, R.id.logLine, logLines.map { it.first }.toMutableList())
         logList.adapter = logAdapter
 
         activity.findViewById<Button>(R.id.btnOpenAgent).setOnClickListener { expand() }
@@ -148,11 +166,77 @@ class AgentPanelController(
 
         buildSkillChips()
         refreshUserSkillChips()
+
+        // reduced-motion: live-cancel the status pulse when the user disables
+        // system animations (infinite animator at duration-scale 0 = frame spin)
+        activity.contentResolver.registerContentObserver(
+            Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE), false, motionObserver
+        )
     }
 
+    /** Called from MainActivity.onDestroy — releases the motion ContentObserver. */
+    fun dispose() {
+        try { activity.contentResolver.unregisterContentObserver(motionObserver) } catch (_: Exception) {}
+        stopPulse()
+    }
+
+    // --------------------------------------------------- motion system (§5)
+
+    private fun animationsOn(): Boolean =
+        try {
+            Settings.Global.getFloat(
+                activity.contentResolver,
+                Settings.Global.ANIMATOR_DURATION_SCALE, 1f
+            ) > 0f
+        } catch (_: Exception) {
+            true
+        }
+
+    private fun startPulse() {
+        if (pulse != null || !animationsOn()) return
+        pulse = ValueAnimator.ofFloat(1f, 0.45f, 1f).apply {
+            duration = 1200
+            repeatCount = ValueAnimator.INFINITE
+            addUpdateListener { animator -> statusDot.alpha = animator.animatedValue as Float }
+            start()
+        }
+    }
+
+    private fun stopPulse() {
+        pulse?.cancel()
+        pulse = null
+        statusDot.alpha = 1f
+    }
+
+    private fun dp(n: Int): Int = (n * activity.resources.displayMetrics.density).toInt()
+
     fun isVisible(): Boolean = panel.visibility == View.VISIBLE
-    fun expand() { panel.visibility = View.VISIBLE; askBar.visibility = View.GONE }
-    fun collapse() { panel.visibility = View.GONE; askBar.visibility = View.VISIBLE }
+
+    /**
+     * State-first expand/collapse: visibility flips synchronously (AppSmokeTest
+     * asserts immediately after click), then the enter transition plays.
+     * Panel exit is intentionally not animated — the ask-bar fade-in carries it.
+     */
+    fun expand() {
+        panel.visibility = View.VISIBLE
+        askBar.visibility = View.GONE
+        val from = if (panel.height > 0) panel.height * 0.35f else 120f
+        panel.translationY = from
+        panel.alpha = 0f
+        panel.animate().translationY(0f).alpha(1f)
+            .setDuration(280).setInterpolator(EMPHASIZED)
+            .setListener(null).start()
+    }
+
+    fun collapse() {
+        panel.visibility = View.GONE
+        stopPulse()
+        askBar.visibility = View.VISIBLE
+        askBar.alpha = 0f
+        askBar.animate().alpha(1f)
+            .setDuration(200).setInterpolator(ACCELERATE)
+            .setListener(null).start()
+    }
 
     // ------------------------------------------------------- declarative chips
 
@@ -162,7 +246,7 @@ class AgentPanelController(
         for (skill in skills.skills) {
             val chip = TextView(activity)
             chip.text = "${skill.icon} ${skill.name}"
-            chip.setPadding(20, 10, 20, 10)
+            chip.setPadding(dp(12), dp(6), dp(12), dp(6))
             chip.textSize = 12f
             chip.setBackgroundResource(R.drawable.bg_chip)
             chip.setTextColor(activity.getColor(R.color.text_primary))
@@ -183,7 +267,10 @@ class AgentPanelController(
         for (i in 0 until skillChips.childCount) {
             val chip = skillChips.getChildAt(i) as TextView
             val active = chip.tag == selectedSkillId
-            chip.setTextColor(activity.getColor(if (active) R.color.accent_bright else R.color.text_primary))
+            chip.isSelected = active // drives the bg_chip selected state
+            chip.setTextColor(
+                activity.getColor(if (active) R.color.on_primary_container else R.color.text_primary)
+            )
         }
     }
 
@@ -200,7 +287,7 @@ class AgentPanelController(
             for (skill in list) {
                 val chip = TextView(activity)
                 chip.text = "▶ ${skill.name} (${skill.steps.size})"
-                chip.setPadding(20, 10, 20, 10)
+                chip.setPadding(dp(12), dp(6), dp(12), dp(6))
                 chip.textSize = 12f
                 chip.setBackgroundResource(R.drawable.bg_chip)
                 chip.setTextColor(activity.getColor(R.color.accent_bright))
@@ -216,7 +303,7 @@ class AgentPanelController(
 
     private fun showUserSkillMenu(skill: RecordedSkill) {
         val options = arrayOf("Run now", "Details", "Edit JSON", "Export", "Delete")
-        AlertDialog.Builder(activity)
+        MaterialAlertDialogBuilder(activity)
             .setTitle(skill.summaryLine())
             .setItems(options) { _, which ->
                 when (which) {
@@ -240,7 +327,7 @@ class AgentPanelController(
             Toast.makeText(activity, "Stop recording first", Toast.LENGTH_SHORT).show()
             return
         }
-        AlertDialog.Builder(activity)
+        MaterialAlertDialogBuilder(activity)
             .setTitle("Run skill")
             .setMessage("${skill.summaryLine()}\n\nSensitive fields (if any) will be asked for; high-risk steps still require confirmation.")
             .setPositiveButton("Run") { _, _ ->
@@ -265,7 +352,7 @@ class AgentPanelController(
             sb.appendLine("${i + 1}. ${playerStepDescription(s)}")
         }
         if (skill.verification.isNotBlank()) { sb.appendLine(); sb.appendLine("Success check: ${skill.verification}") }
-        AlertDialog.Builder(activity)
+        MaterialAlertDialogBuilder(activity)
             .setTitle(skill.name)
             .setMessage(sb.toString())
             .setPositiveButton("OK", null)
@@ -285,7 +372,7 @@ class AgentPanelController(
         input.minLines = 6
         val scroll = android.widget.ScrollView(activity)
         scroll.addView(input)
-        AlertDialog.Builder(activity)
+        MaterialAlertDialogBuilder(activity)
             .setTitle("Edit skill JSON")
             .setView(scroll)
             .setPositiveButton("Save") { _, _ ->
@@ -308,7 +395,7 @@ class AgentPanelController(
     }
 
     private fun confirmDeleteUserSkill(skill: RecordedSkill) {
-        AlertDialog.Builder(activity)
+        MaterialAlertDialogBuilder(activity)
             .setTitle("Delete skill?")
             .setMessage("'${skill.name}' will be removed from this device.")
             .setPositiveButton("Delete") { _, _ ->
@@ -325,7 +412,7 @@ class AgentPanelController(
         if (recorder.state == SkillRecorder.State.RECORDING) {
             uiScope.launch { stopRecordingFlow() }
         } else {
-            AlertDialog.Builder(activity)
+            MaterialAlertDialogBuilder(activity)
                 .setTitle("Record a skill")
                 .setMessage(
                     "Perform the task by hand now — your clicks, typing, selections and scrolling are captured step by step.\n\n" +
@@ -362,7 +449,7 @@ class AgentPanelController(
             addView(descInput)
         }
         val name = suspendCancellableCoroutine { cont ->
-            AlertDialog.Builder(activity)
+            MaterialAlertDialogBuilder(activity)
                 .setTitle("Save recorded skill")
                 .setView(box)
                 .setPositiveButton("Review") { _, _ -> cont.resume(nameInput.text.toString().ifBlank { "" }) }
@@ -397,7 +484,7 @@ class AgentPanelController(
         editable.setSingleLine(false)
         val scroll = android.widget.ScrollView(activity)
         scroll.addView(editable)
-        AlertDialog.Builder(activity)
+        MaterialAlertDialogBuilder(activity)
             .setTitle("Review: ${skill.name}")
             .setMessage(summary.take(1200))
             .setView(scroll)
@@ -457,20 +544,35 @@ class AgentPanelController(
 
     override fun onStateChanged(state: AgentEngine.State, message: String) {
         activity.runOnUiThread {
-            val (dotColor, label) = when (state) {
-                AgentEngine.State.IDLE -> R.color.text_secondary to "✦ What should I do?"
-                AgentEngine.State.RUNNING -> R.color.accent_bright to "✦ Agent working — $message"
-                AgentEngine.State.AWAITING_CONFIRM -> R.color.warning to "⚠ Waiting for your confirmation"
-                AgentEngine.State.AWAITING_USER -> R.color.warning to "⏸ Paused — $message"
-                AgentEngine.State.COMPLETED -> R.color.success to "✓ Completed"
-                AgentEngine.State.FAILED -> R.color.danger to "✗ Failed — $message"
-                AgentEngine.State.CANCELLED -> R.color.text_secondary to "■ Stopped"
-            }
-            statusDot.setBackgroundColor(activity.getColor(dotColor))
-            statusText.text = label
+            applyAgentState(state, message)
             stepText.text = ""
             refreshButtons(engineState = state)
         }
+    }
+
+    /**
+     * Single owner of agent-status styling — called by the engine map AND the
+     * /grill-me interview listener so the two writers can never drift.
+     * Dot colors: IDLE/CANCELLED neutral · RUNNING primary(+pulse) ·
+     * AWAITING_* warning · COMPLETED success · FAILED danger.
+     */
+    private fun applyAgentState(state: AgentEngine.State, message: String) {
+        val (dotColor, label) = when (state) {
+            AgentEngine.State.IDLE -> R.color.on_surface_variant to "✦ What should I do?"
+            AgentEngine.State.RUNNING -> R.color.primary to "✦ Agent working — $message"
+            AgentEngine.State.AWAITING_CONFIRM -> R.color.warning to "⚠ Waiting for your confirmation"
+            AgentEngine.State.AWAITING_USER -> R.color.warning to "⏸ Paused — $message"
+            AgentEngine.State.COMPLETED -> R.color.success to "✓ Completed"
+            AgentEngine.State.FAILED -> R.color.danger to "✗ Failed — $message"
+            AgentEngine.State.CANCELLED -> R.color.on_surface_variant to "■ Stopped"
+        }
+        applyStatus(activity.getColor(dotColor), label, pulsing = state == AgentEngine.State.RUNNING)
+    }
+
+    private fun applyStatus(color: Int, label: String, pulsing: Boolean) {
+        statusDot.backgroundTintList = ColorStateList.valueOf(color)
+        statusText.text = label
+        if (pulsing) startPulse() else stopPulse()
     }
 
     private fun refreshButtons(engineState: AgentEngine.State? = null) {
@@ -482,7 +584,9 @@ class AgentPanelController(
         btnTakeControl.visibility = if (running) View.VISIBLE else View.GONE
         btnResume.visibility = if (paused) View.VISIBLE else View.GONE
         btnStop.visibility = if (running || paused || interviewActive) View.VISIBLE else View.GONE
-        btnRecord.text = if (recording) "■ Stop & Save" else "🎙 Record"
+        btnRecord.text = if (recording) "Stop & Save" else "Record"
+        (btnRecord as? com.google.android.material.button.MaterialButton)
+            ?.setIconResource(if (recording) R.drawable.ic_stop else R.drawable.ic_record)
         btnRecord.visibility = if (running || paused) View.GONE else View.VISIBLE
         btnGrillMe.visibility = if (running || paused) View.GONE else View.VISIBLE
         if (recording) {
@@ -508,6 +612,35 @@ class AgentPanelController(
         }
     }
 
+    /**
+     * Step-row styling: leading-glyph state colors + the stored isError flag
+     * (previously discarded). Parser stays trivial — the glyph IS the state.
+     */
+    private inner class CometLogAdapter(
+        context: Context,
+        resource: Int,
+        textViewResourceId: Int,
+        objects: MutableList<String>
+    ) : ArrayAdapter<String>(context, resource, textViewResourceId, objects) {
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+            val view = super.getView(position, convertView, parent) as TextView
+            val error = logLines.getOrNull(position)?.second == true
+            val glyphColor = when (view.text.firstOrNull()) {
+                '✓', '▶' -> R.color.success
+                '✗' -> R.color.danger
+                '⚠' -> R.color.warning
+                '⏺' -> R.color.danger
+                '●', '✦', '✍' -> R.color.primary
+                '→', '■' -> R.color.on_surface_variant
+                else -> if (view.text.startsWith("🎙") || view.text.startsWith("✍")) R.color.primary
+                else if (error) R.color.danger else R.color.on_surface
+            }
+            view.setTextColor(activity.getColor(if (error) R.color.danger else glyphColor))
+            return view
+        }
+    }
+
     override fun onConfirmRequired(action: JSONObject, reason: String) {
         activity.runOnUiThread {
             if (activity.isFinishing || activity.isDestroyed) {
@@ -522,7 +655,7 @@ class AgentPanelController(
                 "download" -> "Download ${action.optString("url", action.optString("ref")).take(120)}"
                 else -> kind
             }
-            AlertDialog.Builder(activity)
+            MaterialAlertDialogBuilder(activity)
                 .setTitle("Confirm action")
                 .setMessage("$detail\n\nReason: $reason\n\nAllow the agent to perform this action?")
                 .setPositiveButton("Allow") { _, _ -> engine.confirm(true) }
@@ -535,15 +668,30 @@ class AgentPanelController(
     override fun onAskUser(question: String) {
         activity.runOnUiThread {
             expand()
-            answerRow.visibility = View.VISIBLE
+            revealAnswerRow()
             answerInput.hint = question.take(60)
             answerInput.requestFocus()
         }
     }
 
+    private fun revealAnswerRow() {
+        answerRow.visibility = View.VISIBLE
+        answerRow.alpha = 0f
+        answerRow.translationY = dp(8).toFloat()
+        answerRow.animate().alpha(1f).translationY(0f)
+            .setDuration(200).setInterpolator(EMPHASIZED)
+            .setListener(null).start()
+    }
+
     override fun onChallengeDetected(detail: String) {
         activity.runOnUiThread {
-            activity.findViewById<LinearLayout>(R.id.challengeBanner).visibility = View.VISIBLE
+            val banner = activity.findViewById<LinearLayout>(R.id.challengeBanner)
+            banner.visibility = View.VISIBLE
+            banner.alpha = 0f
+            banner.translationY = -24f
+            banner.animate().alpha(1f).translationY(0f)
+                .setDuration(200).setInterpolator(EMPHASIZED)
+                .setListener(null).start()
             activity.findViewById<TextView>(R.id.challengeText).text = detail
             expand()
         }
@@ -556,11 +704,10 @@ class AgentPanelController(
             activity.runOnUiThread {
                 expand()
                 log("🎙 $question")
-                answerRow.visibility = View.VISIBLE
+                revealAnswerRow()
                 answerInput.hint = question.take(60)
                 answerInput.requestFocus()
-                statusText.text = "🎙 Interview — answer below"
-                statusDot.setBackgroundColor(activity.getColor(R.color.accent_bright))
+                applyStatus(activity.getColor(R.color.primary), "🎙 Interview — answer below", pulsing = false)
             }
         }
 
@@ -603,7 +750,7 @@ class AgentPanelController(
         editable.setSingleLine(false)
         val scroll = android.widget.ScrollView(activity)
         scroll.addView(editable)
-        AlertDialog.Builder(activity)
+        MaterialAlertDialogBuilder(activity)
             .setTitle("Review your skill: ${skill.name}")
             .setMessage("$summary\n\nEdit the JSON if you like, then Save — or send feedback to revise it.")
             .setView(scroll)
@@ -632,7 +779,7 @@ class AgentPanelController(
     private fun askRevisionFeedback() {
         val input = EditText(activity)
         input.hint = "e.g. open the results in a new tab first; use my saved address"
-        AlertDialog.Builder(activity)
+        MaterialAlertDialogBuilder(activity)
             .setTitle("What should change?")
             .setView(input)
             .setPositiveButton("Revise") { _, _ ->
@@ -668,7 +815,7 @@ class AgentPanelController(
                     val input = EditText(activity)
                     input.hint = "Value (never stored)"
                     input.transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
-                    AlertDialog.Builder(activity)
+                    MaterialAlertDialogBuilder(activity)
                         .setTitle("Private field")
                         .setMessage("This skill fills: $fieldDescription\n\nType the value now — it is used once and never saved.")
                         .setView(input)
@@ -683,7 +830,7 @@ class AgentPanelController(
             withContext(Dispatchers.Main) {
                 suspendCancellableCoroutine { cont ->
                     if (activity.isFinishing || activity.isDestroyed) { cont.resume(false); return@suspendCancellableCoroutine }
-                    AlertDialog.Builder(activity)
+                    MaterialAlertDialogBuilder(activity)
                         .setTitle("Confirm replay step")
                         .setMessage(message)
                         .setPositiveButton("Allow") { _, _ -> if (cont.isActive) cont.resume(true) }
