@@ -4,4 +4,32 @@
     <string name="settings_title">Settings</string>
     <string name="url_hint">Search or enter URL</string>
     <string name="ask_agent">Ask Agent</string>
+
+    <!-- COMET AURORA — a11y content descriptions -->
+    <string name="cd_back">Back</string>
+    <string name="cd_forward">Forward</string>
+    <string name="cd_reload">Reload page</string>
+    <string name="cd_tabs">Switch tabs</string>
+    <string name="cd_menu">Menu</string>
+    <string name="cd_collapse">Collapse agent panel</string>
+    <string name="cd_send">Send answer</string>
+    <string name="cd_close_tab">Close tab</string>
+
+    <!-- COMET AURORA — tab switcher sheet -->
+    <string name="tabs_title">Tabs</string>
+    <string name="new_tab">New tab</string>
+
+    <!-- COMET AURORA — shell strings -->
+    <string name="challenge_default">Human verification required</string>
+    <string name="take_control">Take Control</string>
+    <string name="resume">Resume</string>
+    <string name="open">Open</string>
+    <string name="agent_idle">✦ What should I do?</string>
+    <string name="goal_hint">Describe the task, e.g. find the cheapest hotel in Ahmedabad for Friday</string>
+    <string name="user_skills_caption">YOUR SKILLS · TAP TO RUN, LONG-PRESS FOR MORE</string>
+    <string name="run_agent">Run Agent</string>
+    <string name="record">Record</string>
+    <string name="grill_me">/grill-me</string>
+    <string name="stop">Stop</string>
+    <string name="your_answer">Your answer…</string>
 </resources>

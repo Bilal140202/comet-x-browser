@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Comet theme attrs: tonal/text button roles (material lib ships no such theme attrs) -->
+<resources>
+    <attr name="cometButtonTonalStyle" format="reference" />
+    <attr name="cometButtonTextStyle" format="reference" />
+</resources>

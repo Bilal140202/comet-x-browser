@@ -1,19 +1,56 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.CometX" parent="android:Theme.Material.NoActionBar">
-        <item name="android:colorPrimary">@color/accent</item>
-        <item name="android:colorPrimaryDark">@color/background</item>
-        <item name="android:colorAccent">@color/accent_bright</item>
-        <item name="android:windowBackground">@color/background</item>
-        <item name="android:statusBarColor">@color/background</item>
-        <item name="android:navigationBarColor">@color/background</item>
-        <item name="android:textColorPrimary">@color/text_primary</item>
-        <item name="android:textColorSecondary">@color/text_secondary</item>
-        <item name="android:windowActionModeOverlay">true</item>
-    </style>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      COMET MATERIAL EXPRESSIVE — app theme.
+      M3 DayNight foundation; Comet's tonal palette mapped onto the M3 roles.
+      Both attribute namespaces are set: framework widgets read android:*,
+      Material/AppCompat widgets read the unprefixed attrs.
+    -->
+    <style name="Theme.CometX" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- ===== M3 color roles → Comet tokens ===== -->
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
+        <item name="colorPrimaryContainer">@color/primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
+        <item name="colorSecondary">@color/secondary</item>
+        <item name="colorOnSecondary">@color/on_secondary</item>
+        <item name="colorSecondaryContainer">@color/secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/on_secondary_container</item>
+        <item name="colorTertiary">@color/tertiary</item>
+        <item name="colorOnTertiary">@color/on_tertiary</item>
+        <item name="colorError">@color/error</item>
+        <item name="colorOnError">@color/on_error</item>
+        <item name="colorErrorContainer">@color/error_container</item>
+        <item name="colorOnErrorContainer">@color/on_error_container</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/on_surface</item>
+        <item name="colorSurfaceVariant">@color/surface_container</item>
+        <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
+        <item name="colorOutline">@color/outline</item>
+        <item name="colorOutlineVariant">@color/outline_variant</item>
+        <item name="colorSurfaceContainerLow">@color/surface_low</item>
+        <item name="colorSurfaceContainer">@color/surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/surface_container_high</item>
+        <item name="colorSurfaceContainerHighest">@color/surface_container_highest</item>
 
-    <style name="TextAppearance.CometX.Title" parent="android:TextAppearance.Material.Title">
-        <item name="android:textColor">@color/text_primary</item>
-        <item name="android:textSize">18sp</item>
+        <!-- ===== AppCompat (Material widgets read these) ===== -->
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="cometButtonTonalStyle">@style/Comet.Button.Tonal</item>
+        <item name="cometButtonTextStyle">@style/Comet.Button.Text</item>
+
+        <!-- ===== framework (WebView, EditText cursors, system bars) ===== -->
+        <item name="android:colorPrimary">@color/accent</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:statusBarColor">@color/surface</item>
+        <item name="android:navigationBarColor">@color/background</item>
+        <item name="android:windowLightStatusBar">@bool/light_status_icons</item>
+        <item name="android:textColorPrimary">@color/on_surface</item>
+        <item name="android:textColorSecondary">@color/on_surface_variant</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <!-- DayNight dark + Force Dark would double-darken custom drawables -->
+        <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
     </style>
 </resources>

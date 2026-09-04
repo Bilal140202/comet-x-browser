@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      COMET MATERIAL EXPRESSIVE — component styles.
+      Rules (docs/design-system/COMET_MATERIAL_EXPRESSIVE.md §6):
+        * full-pill buttons, textAllCaps=false, explicit heights, no android:background
+        * icon buttons 48dp targets, 24dp currentColor vectors
+    -->
+    <style name="Comet" />
+
+    <!-- ============ buttons ============ -->
+    <style name="Comet.Button" parent="Widget.Material3.Button">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="cornerRadius">20dp</item>
+    </style>
+
+    <style name="Comet.Button.Tonal" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="cornerRadius">20dp</item>
+    </style>
+
+    <style name="Comet.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="cornerRadius">20dp</item>
+    </style>
+
+    <style name="Comet.Button.Text" parent="Widget.Material3.Button.TextButton">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="cornerRadius">20dp</item>
+    </style>
+
+    <!-- tonal-error: errorContainer bg + onErrorContainer text (AA 5.6:1 dark) -->
+    <style name="Comet.Button.Danger" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="backgroundTint">@color/error_container</item>
+        <item name="android:textColor">@color/on_error_container</item>
+        <item name="rippleColor">@color/on_error_container</item>
+        <item name="cornerRadius">20dp</item>
+    </style>
+
+    <!-- compact pill for banner / inline rows -->
+    <style name="Comet.Button.Compact" parent="Comet.Button.Text">
+        <item name="android:minHeight">36dp</item>
+        <item name="android:paddingLeft">14dp</item>
+        <item name="android:paddingRight">14dp</item>
+    </style>
+
+    <!-- 48dp icon button (top bar, panel close, tab close) -->
+    <style name="Comet.Button.Icon" parent="Widget.Material3.Button.IconButton">
+        <item name="android:minWidth">48dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="iconSize">22dp</item>
+        <item name="iconGravity">textStart</item>
+        <item name="iconPadding">0dp</item>
+        <item name="iconTint">@color/on_surface_variant</item>
+    </style>
+
+    <!-- send action: filled tonal with icon -->
+    <style name="Comet.Button.Send" parent="Comet.Button.Tonal">
+        <item name="android:minWidth">48dp</item>
+        <item name="iconSize">20dp</item>
+        <item name="iconGravity">textStart</item>
+        <item name="iconPadding">0dp</item>
+        <item name="iconTint">@color/on_secondary_container</item>
+    </style>
+
+</resources>

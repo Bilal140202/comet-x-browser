@@ -1,139 +1,152 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  COMET AURORA — browser shell + agent pseudo-sheet.
+  Contracts (docs/ui/FUNCTIONALITY_LOCK.md §A): all IDs preserved with
+  type-compatible widgets; askBar/agentPanel/challengeBanner/answerRow/
+  skillChips/userSkillChips stay LinearLayout; userSkillsScroll stays
+  HorizontalScrollView; logList stays ListView; urlBar/goalInput/answerInput
+  stay EditText. MaterialButton extends Button; no android:background on
+  MaterialButtons (styles only — design system §6).
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@color/background">
 
-    <!-- ================= Top bar ================= -->
+    <!-- ================= Top bar (56dp, surface + hairline) ================= -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="54dp"
+        android:layout_height="56dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="6dp"
+        android:paddingHorizontal="2dp"
         android:background="@color/surface">
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnBack"
-            
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:minWidth="40dp"
-            android:text="‹"
-            android:textSize="22sp"
-            android:textColor="@color/text_primary"
-            android:background="?android:attr/selectableItemBackgroundBorderless" />
+            style="@style/Comet.Button.Icon"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/cd_back"
+            app:icon="@drawable/ic_arrow_back" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnForward"
-            
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:minWidth="40dp"
-            android:text="›"
-            android:textSize="22sp"
-            android:textColor="@color/text_primary"
-            android:background="?android:attr/selectableItemBackgroundBorderless" />
+            style="@style/Comet.Button.Icon"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/cd_forward"
+            app:icon="@drawable/ic_arrow_forward" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnReload"
-            
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:minWidth="40dp"
-            android:text="⟳"
-            android:textSize="18sp"
-            android:textColor="@color/text_primary"
-            android:background="?android:attr/selectableItemBackgroundBorderless" />
+            style="@style/Comet.Button.Icon"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/cd_reload"
+            app:icon="@drawable/ic_refresh" />
 
         <EditText
             android:id="@+id/urlBar"
             android:layout_width="0dp"
-            android:layout_height="40dp"
+            android:layout_height="44dp"
             android:layout_weight="1"
             android:layout_marginHorizontal="6dp"
             android:paddingHorizontal="14dp"
             android:background="@drawable/bg_urlbar"
             android:hint="@string/url_hint"
-            android:textColorHint="@color/text_secondary"
-            android:textColor="@color/text_primary"
-            android:textSize="14sp"
+            android:textColorHint="@color/on_surface_variant"
+            android:textColor="@color/on_surface"
+            android:textSize="15sp"
             android:inputType="textUri"
             android:imeOptions="actionGo"
             android:maxLines="1"
             android:importantForAutofill="no" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnTabs"
-            
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:minWidth="40dp"
-            android:text="▣"
-            android:textSize="16sp"
-            android:textColor="@color/text_primary"
-            android:background="?android:attr/selectableItemBackgroundBorderless" />
+            style="@style/Comet.Button.Icon"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/cd_tabs"
+            app:icon="@drawable/ic_tab" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnMenu"
-            
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:minWidth="40dp"
-            android:text="⋮"
-            android:textSize="20sp"
-            android:textColor="@color/text_primary"
-            android:background="?android:attr/selectableItemBackgroundBorderless" />
+            style="@style/Comet.Button.Icon"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/cd_menu"
+            app:icon="@drawable/ic_more_vert" />
     </LinearLayout>
+
+    <!-- hairline divider under the top bar -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/outline_variant" />
 
     <ProgressBar
         android:id="@+id/progress"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
-        android:layout_height="3dp"
+        android:layout_height="2dp"
         android:max="100"
-        android:progressTint="@color/accent"
-        android:background="@color/surface" />
+        android:progressTint="@color/primary"
+        android:progressBackgroundTint="@color/outline_variant"
+        android:visibility="gone" />
 
-    <!-- ================= Challenge banner ================= -->
+    <!-- ================= Challenge banner (warningContainer tonal) ================= -->
     <LinearLayout
         android:id="@+id/challengeBanner"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:padding="10dp"
-        android:background="@color/warning"
+        android:layout_marginHorizontal="8dp"
+        android:layout_marginTop="6dp"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
+        android:background="@drawable/bg_banner"
         android:visibility="gone">
 
+        <ImageView
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:importantForAccessibility="no"
+            app:srcCompat="@drawable/ic_warning"
+            app:tint="@color/on_warning_container" />
+
         <TextView
+            android:id="@+id/challengeText"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:id="@+id/challengeText"
-            android:text="Human verification required"
-            android:textColor="@color/background"
+            android:layout_marginHorizontal="8dp"
+            android:text="@string/challenge_default"
+            android:textColor="@color/on_warning_container"
             android:textSize="13sp"
             android:maxLines="2" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnChallengeTake"
+            style="@style/Comet.Button.Compact"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:text="Take Control"
-            android:textSize="12sp"
-            android:textColor="@color/background" />
+            android:text="@string/take_control"
+            android:textColor="@color/on_warning_container" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnChallengeResume"
+            style="@style/Comet.Button.Compact"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:layout_marginStart="6dp"
-            android:text="Resume"
-            android:textSize="12sp"
-            android:textColor="@color/background" />
+            android:layout_marginStart="4dp"
+            android:text="@string/resume"
+            android:textColor="@color/on_warning_container" />
     </LinearLayout>
 
     <!-- ================= Web container ================= -->
@@ -143,54 +156,71 @@
         android:layout_height="0dp"
         android:layout_weight="1" />
 
-    <!-- ================= Ask Agent bar ================= -->
+    <!-- ================= Ask Agent bar (the one floating pill) ================= -->
     <LinearLayout
         android:id="@+id/askBar"
         android:layout_width="match_parent"
-        android:layout_height="50dp"
+        android:layout_height="52dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="@color/surface"
-        android:paddingHorizontal="12dp">
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="12dp"
+        android:paddingHorizontal="16dp"
+        android:background="@drawable/bg_askbar"
+        android:elevation="2dp"
+        android:foreground="?android:attr/selectableItemBackground">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="✦"
-            android:textColor="@color/accent_bright"
-            android:textSize="18sp"
-            android:paddingEnd="10dp" />
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:importantForAccessibility="no"
+            app:srcCompat="@drawable/ic_auto_awesome"
+            app:tint="@color/accent" />
 
         <TextView
             android:id="@+id/askBarText"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:layout_marginStart="10dp"
             android:text="@string/ask_agent"
-            android:textColor="@color/text_secondary"
-            android:textSize="15sp" />
+            android:textColor="@color/on_surface_variant"
+            android:textSize="14sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnOpenAgent"
+            style="@style/Comet.Button.Compact"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:text="Open"
-            android:textSize="12sp"
-            android:background="@drawable/bg_button_accent"
-            android:textColor="@color/background"
-            android:paddingHorizontal="16dp" />
+            android:layout_marginStart="8dp"
+            android:text="@string/open"
+            android:textColor="@color/primary" />
     </LinearLayout>
 
-    <!-- ================= Agent panel ================= -->
+    <!-- ================= Agent panel (pseudo-sheet, 28dp top corners) ================= -->
     <LinearLayout
         android:id="@+id/agentPanel"
         android:layout_width="match_parent"
         android:layout_height="340dp"
         android:orientation="vertical"
         android:background="@drawable/bg_agent_panel"
-        android:padding="12dp"
+        android:elevation="8dp"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="12dp"
         android:visibility="gone">
 
+        <!-- decorative drag handle -->
+        <View
+            android:layout_width="24dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="6dp"
+            android:background="@drawable/bg_drag_handle" />
+
+        <!-- header: state dot + status + step counter + collapse -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -199,49 +229,50 @@
 
             <View
                 android:id="@+id/statusDot"
-                android:layout_width="10dp"
-                android:layout_height="10dp"
-                android:background="@color/text_secondary" />
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:background="@drawable/bg_status_dot" />
 
             <TextView
                 android:id="@+id/statusText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:text="✦ What should I do?"
-                android:textColor="@color/text_primary"
-                android:textSize="15sp"
-                android:singleLine="true" />
+                android:layout_marginStart="10dp"
+                android:text="@string/agent_idle"
+                android:textColor="@color/on_surface"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:singleLine="true"
+                android:ellipsize="end" />
 
             <TextView
                 android:id="@+id/stepText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/text_secondary"
+                android:layout_marginStart="8dp"
+                android:textColor="@color/on_surface_variant"
                 android:textSize="12sp" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnPanelClose"
-                
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:minWidth="36dp"
-                android:text="▾"
-                android:textColor="@color/text_secondary"
-                android:background="?android:attr/selectableItemBackgroundBorderless" />
+                style="@style/Comet.Button.Icon"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:contentDescription="@string/cd_collapse"
+                app:icon="@drawable/ic_keyboard_arrow_down" />
         </LinearLayout>
 
         <EditText
             android:id="@+id/goalInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:padding="10dp"
+            android:layout_marginTop="6dp"
+            android:padding="12dp"
             android:background="@drawable/bg_panel_input"
-            android:hint="Describe the task, e.g. find the cheapest hotel in Ahmedabad for Friday"
-            android:textColorHint="@color/text_secondary"
-            android:textColor="@color/text_primary"
+            android:hint="@string/goal_hint"
+            android:textColorHint="@color/on_surface_variant"
+            android:textColor="@color/on_surface"
             android:textSize="14sp"
             android:minLines="2"
             android:maxLines="4"
@@ -251,13 +282,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:scrollbars="none">
+            android:scrollbars="none"
+            android:clipToPadding="false">
 
             <LinearLayout
                 android:id="@+id/skillChips"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal" />
+                android:orientation="horizontal"
+                android:paddingVertical="2dp" />
         </HorizontalScrollView>
 
         <TextView
@@ -265,9 +298,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="YOUR SKILLS · tap to run, long-press for more"
-            android:textColor="@color/text_secondary"
-            android:textSize="10sp"
+            android:text="@string/user_skills_caption"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="11sp"
+            android:letterSpacing="0.04"
             android:visibility="gone" />
 
         <HorizontalScrollView
@@ -276,115 +310,134 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:scrollbars="none"
+            android:clipToPadding="false"
             android:visibility="gone">
 
             <LinearLayout
                 android:id="@+id/userSkillChips"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal" />
+                android:orientation="horizontal"
+                android:paddingVertical="2dp" />
         </HorizontalScrollView>
 
+        <!-- control row: visibility matrix preserved in AgentPanelController -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="8dp">
+            android:layout_marginTop="10dp">
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnRun"
+                style="@style/Comet.Button"
                 android:layout_width="0dp"
-                android:layout_height="42dp"
+                android:layout_height="44dp"
                 android:layout_weight="1"
-                android:text="Run Agent"
-                android:textSize="13sp"
-                android:background="@drawable/bg_button_accent"
-                android:textColor="@color/background" />
+                android:text="@string/run_agent"
+                android:textSize="14sp" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnRecord"
+                style="@style/Comet.Button.Tonal"
                 android:layout_width="wrap_content"
-                android:layout_height="42dp"
+                android:layout_height="44dp"
                 android:layout_marginStart="8dp"
-                android:text="🎙 Record"
-                android:textSize="12sp" />
+                android:paddingHorizontal="14dp"
+                android:text="@string/record"
+                android:textSize="13sp"
+                app:icon="@drawable/ic_record"
+                app:iconSize="14dp"
+                app:iconGravity="textStart"
+                app:iconPadding="4dp"
+                app:iconTint="@color/danger" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnGrillMe"
+                style="@style/Comet.Button.Outlined"
                 android:layout_width="wrap_content"
-                android:layout_height="42dp"
+                android:layout_height="44dp"
                 android:layout_marginStart="8dp"
-                android:text="/grill-me"
-                android:textSize="12sp" />
+                android:paddingHorizontal="14dp"
+                android:text="@string/grill_me"
+                android:textSize="13sp" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnTakeControl"
+                style="@style/Comet.Button.Tonal"
                 android:layout_width="0dp"
-                android:layout_height="42dp"
+                android:layout_height="44dp"
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
-                android:text="Take Control"
+                android:text="@string/take_control"
                 android:textSize="13sp"
                 android:visibility="gone" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnResume"
+                style="@style/Comet.Button.Tonal"
                 android:layout_width="0dp"
-                android:layout_height="42dp"
+                android:layout_height="44dp"
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
-                android:text="Resume"
+                android:text="@string/resume"
                 android:textSize="13sp"
                 android:visibility="gone" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnStop"
+                style="@style/Comet.Button.Danger"
                 android:layout_width="0dp"
-                android:layout_height="42dp"
+                android:layout_height="44dp"
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
-                android:text="Stop"
+                android:text="@string/stop"
                 android:textSize="13sp"
                 android:visibility="gone" />
         </LinearLayout>
 
+        <!-- ask-user / interview answer row -->
         <LinearLayout
             android:id="@+id/answerRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
+            android:gravity="center_vertical"
             android:layout_marginTop="8dp"
             android:visibility="gone">
 
             <EditText
                 android:id="@+id/answerInput"
                 android:layout_width="0dp"
-                android:layout_height="40dp"
+                android:layout_height="44dp"
                 android:layout_weight="1"
-                android:paddingHorizontal="10dp"
+                android:paddingHorizontal="12dp"
                 android:background="@drawable/bg_panel_input"
-                android:hint="Your answer…"
-                android:textColorHint="@color/text_secondary"
-                android:textColor="@color/text_primary"
-                android:textSize="13sp"
+                android:hint="@string/your_answer"
+                android:textColorHint="@color/on_surface_variant"
+                android:textColor="@color/on_surface"
+                android:textSize="14sp"
                 android:singleLine="true" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnAnswerSend"
-                android:layout_width="wrap_content"
-                android:layout_height="40dp"
+                style="@style/Comet.Button.Send"
+                android:layout_width="48dp"
+                android:layout_height="44dp"
                 android:layout_marginStart="8dp"
-                android:text="Send"
-                android:textSize="12sp" />
+                android:contentDescription="@string/cd_send"
+                app:icon="@drawable/ic_send" />
         </LinearLayout>
 
         <ListView
             android:id="@+id/logList"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:layout_marginTop="8dp"
-            android:divider="@color/divider"
-            android:dividerHeight="1px"
+            android:divider="@color/outline_variant"
+            android:dividerHeight="1dp"
+            android:scrollbars="none"
             android:stackFromBottom="true"
             android:transcriptMode="normal" />
     </LinearLayout>
