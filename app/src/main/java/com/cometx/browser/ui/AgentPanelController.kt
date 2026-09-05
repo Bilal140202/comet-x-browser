@@ -89,6 +89,7 @@ class AgentPanelController(
     private var answerRow: LinearLayout
     private var answerInput: EditText
     private var logList: ListView
+    private var statsText: TextView
     private val logLines = mutableListOf<Pair<String, Boolean>>()
     private var logAdapter: CometLogAdapter? = null
     private var selectedSkillId: String? = null
@@ -125,6 +126,7 @@ class AgentPanelController(
         answerRow = activity.findViewById(R.id.answerRow)
         answerInput = activity.findViewById(R.id.answerInput)
         logList = activity.findViewById(R.id.logList)
+        statsText = activity.findViewById(R.id.statsText)
 
         logAdapter = CometLogAdapter(activity, R.layout.item_log, R.id.logLine, logLines.map { it.first }.toMutableList())
         logList.adapter = logAdapter
@@ -559,7 +561,21 @@ class AgentPanelController(
         activity.runOnUiThread {
             applyAgentState(state, message)
             stepText.text = ""
+            if (state == AgentEngine.State.RUNNING) statsText.visibility = View.GONE
             refreshButtons(engineState = state)
+        }
+    }
+
+    /** Run summary line (v1.5.0): "8 / 24 steps · ~3.1k tok · 42s · completed". */
+    override fun onRunStats(stats: AgentEngine.RunResult) {
+        activity.runOnUiThread {
+            val secs = stats.durationMs / 1000.0
+            val tok = if (stats.estTokens >= 1000)
+                String.format(java.util.Locale.US, "~%.1fk", stats.estTokens / 1000.0)
+            else "~${stats.estTokens}"
+            val dur = if (secs >= 100) "${(secs / 10).toInt() * 10}s" else String.format(java.util.Locale.US, "%.0fs", secs)
+            statsText.text = "${stats.stepsUsed} / ${stats.stepBudget} steps · $tok tok · $dur · ${stats.outcome}"
+            statsText.visibility = View.VISIBLE
         }
     }
 

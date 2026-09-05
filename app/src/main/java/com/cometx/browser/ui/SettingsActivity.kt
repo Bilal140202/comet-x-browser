@@ -142,6 +142,7 @@ class SettingsActivity : AppCompatActivity() {
         addCheck("Agent memory enabled (can be cleared below)", settings.memoryEnabled()) { settings.setMemoryEnabled(it) }
         addCheck("Skill replay: let AI re-locate elements the recorder missed", settings.skillAiFallback()) { settings.setSkillAiFallback(it) }
         addVisionMode()
+        addCheck("Set-of-Marks: number page elements on agent screenshots (helps the model aim)", settings.somOverlay()) { settings.setSomOverlay(it) }
 
         header("Browser")
         addTextField("Homepage", settings.homepage(), autoSave = true) { settings.setHomepage(it) }

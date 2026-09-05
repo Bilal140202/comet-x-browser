@@ -396,6 +396,18 @@
                 android:visibility="gone" />
         </LinearLayout>
 
+        <!-- run summary (v1.5.0): steps · est. tokens · duration · outcome -->
+        <TextView
+            android:id="@+id/statsText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:paddingHorizontal="4dp"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="12sp"
+            android:singleLine="true"
+            android:visibility="gone" />
+
         <!-- ask-user / interview answer row -->
         <LinearLayout
             android:id="@+id/answerRow"

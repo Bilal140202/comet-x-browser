@@ -154,3 +154,34 @@ PopupMenu (menu) stays framework; its 5 item-title literals are behavior-matched
 | 14 | Light mode + dark mode | both render, contrast holds |
 | 15 | `testDebugUnitTest` | 172+ tests, 0 failures |
 | 16 | `assembleRelease` | BUILD SUCCESSFUL |
+
+---
+
+# § v1.5.0 ADDENDUM — OPERATION COMET RELIABILITY (Set-of-Marks + Run Stats)
+
+Additive contracts only; everything above remains binding.
+
+## A. New view IDs
+
+| ID | Type | Location | Contract |
+|---|---|---|---|
+| `statsText` | `TextView` | `activity_main.xml` (between control row and `answerRow`) | Hidden (`gone`) by default; shown once per run by `onRunStats`; hidden on RUNNING; text = "N / M steps · ~X tok · Ys · outcome". Must remain a `TextView` (no cast issues, but keep the type). |
+
+## B. New behavioral contracts (do not break)
+
+| # | Contract |
+|---|---|
+| SOM-1 | `som_overlay` pref (default **true**) gates `AgentSink.screenshotAnnotatedBase64`; OFF ⇒ plain `screenshotBase64()` path, no `MARKS:` legend, no prompt rule 12 — byte-identical v1.4.0 perception |
+| SOM-2 | Badge number N ≡ element ref `eN` (`SomLayout`); badges drawn from the SAME `PageObservation` instance the model receives, never from a re-observation |
+| SOM-3 | Annotation happens on the downscaled bitmap in Kotlin; page DOM is never modified beyond the existing `data-cx-ref` tagging |
+| SOM-4 | `MARKS:` legend only on messages whose `imageBase64Jpeg` is non-null (§20-gated); vision-describe prompt mentions badge numbers |
+| STAT-1 | `Listener.onRunStats(RunResult)` has a default no-op impl — external listener implementations must keep compiling |
+| STAT-2 | Run stats emitted EXACTLY once per run (terminal done/fail/cancel; `statsEmitted` guard); `stop()` after completion must not re-emit |
+| STAT-3 | Token figures are estimates (chars/4) and are displayed with a "~" prefix |
+
+## C. Regression gate update
+
+Baseline is now **185 tests / 20 suites** (was 172/18). `assembleRelease` must
+produce versionCode 6 / versionName 1.5.0. Signing keystore: `app/keystore/`
+(gitignored) — cert SHA-256 `970e0a30…` shared with v1.4.0; persistent backup
+at `~/keystore-backup/cometx-keystore-v1.5.0/`.
