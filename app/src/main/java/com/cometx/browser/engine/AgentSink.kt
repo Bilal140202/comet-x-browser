@@ -15,10 +15,26 @@ import org.json.JSONObject
  * mirrors the driver abstraction used by desktop browser agents and keeps the
  * agent loop itself free of Android types (headlessly testable).
  */
+
+/**
+ * Annotated screenshot (v1.5.0 Set-of-Marks): upload-ready base64 plus the
+ * number of badges actually drawn (badge N marks element ref eN).
+ */
+data class SomShot(val base64: String, val marks: Int)
+
 interface AgentSink {
     suspend fun observe(): PageObservation?
     suspend fun execute(action: JSONObject): ActionExecutor.Result
     suspend fun screenshotBase64(): String?
+
+    /**
+     * Set-of-Marks variant (v1.5.0): the screenshot is annotated with
+     * numbered badges derived from [obs]'s element list. Default impl falls
+     * back to the plain screenshot with zero marks — fake sinks and SoM-off
+     * runs keep byte-identical v1.4.0 behavior.
+     */
+    suspend fun screenshotAnnotatedBase64(obs: PageObservation): SomShot? =
+        screenshotBase64()?.let { SomShot(it, 0) }
 }
 
 /**
@@ -98,5 +114,27 @@ class LiveWebViewSink(
             null
         } ?: return null
         return Screenshotter.toBase64Jpeg(bmp)
+    }
+
+    /**
+     * SoM: badges are drawn on the downscaled bitmap, never in the page DOM
+     * (the extractor's read-only invariant holds). Any annotation failure
+     * degrades gracefully to a plain screenshot with zero marks.
+     */
+    override suspend fun screenshotAnnotatedBase64(obs: PageObservation): SomShot? {
+        val web = webViewProvider() ?: return null
+        val bmp = try {
+            Screenshotter.capture(web)
+        } catch (e: Exception) {
+            Logx.e("screenshot failed", e)
+            null
+        } ?: return null
+        return try {
+            Screenshotter.toAnnotatedBase64Jpeg(bmp, obs.elements, obs.viewportW, obs.viewportH)
+                ?.let { SomShot(it.first, it.second) }
+        } catch (e: Exception) {
+            Logx.e("som annotate failed", e)
+            Screenshotter.toBase64Jpeg(bmp)?.let { SomShot(it, 0) }
+        }
     }
 }

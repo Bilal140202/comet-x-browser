@@ -176,6 +176,10 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
     fun skillAiFallback(): Boolean = prefs.getBoolean("skill_ai_fallback", true)
     fun setSkillAiFallback(v: Boolean) = prefs.edit().putBoolean("skill_ai_fallback", v).apply()
 
+    /** Set-of-Marks (v1.5.0): number visible elements on agent screenshots. */
+    fun somOverlay(): Boolean = prefs.getBoolean("som_overlay", true)
+    fun setSomOverlay(v: Boolean) = prefs.edit().putBoolean("som_overlay", v).apply()
+
     fun thirdPartyCookies(): Boolean = prefs.getBoolean("third_party_cookies", false)
     fun setThirdPartyCookies(v: Boolean) = prefs.edit().putBoolean("third_party_cookies", v).apply()
 

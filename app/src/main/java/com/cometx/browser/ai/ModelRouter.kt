@@ -419,7 +419,7 @@ class ModelRouter(
                     val answer = oai.chat(
                         listOf(
                             ChatMessage(role = "system",
-                                text = "You describe screenshots for a browser agent. List visible interactive elements, their labels/positions, and any result or status text. Be terse."),
+                                text = "You describe screenshots for a browser agent. List visible interactive elements with their labels/positions and any result or status text. If a numbered circular badge is drawn on an element, mention its number — badge N marks the element with ref eN. Be terse."),
                             ChatMessage(role = "user",
                                 text = "Describe this browser screenshot for the agent.",
                                 imageBase64Jpeg = visionB64)

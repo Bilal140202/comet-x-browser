@@ -52,7 +52,20 @@ class AgentEngine(
         fun onConfirmRequired(action: JSONObject, reason: String)
         fun onAskUser(question: String)
         fun onChallengeDetected(detail: String)
+
+        /** Run-level summary (v1.5.0), emitted exactly once per run at its terminal state. */
+        fun onRunStats(stats: RunResult) {}
     }
+
+    /** One line of honest telemetry for the result card ("simple stats"). */
+    data class RunResult(
+        val stepsUsed: Int,
+        val stepBudget: Int,
+        val estTokens: Int,
+        val durationMs: Long,
+        val screenshots: Int,
+        val outcome: String
+    )
 
     @Volatile var state: State = State.IDLE
         private set
@@ -82,6 +95,21 @@ class AgentEngine(
     /** Set once a model rejects images — vision stays off for the rest of the run. */
     private var visionDisabledForRun = false
 
+    /**
+     * Run-scoped telemetry accumulator (v1.5.0 simple stats). Token counts
+     * are ESTIMATES (chars/4 over prompt + response text) — providers do not
+     * surface wire usage today; the "~" on the result card says so.
+     */
+    private class RunAccumulator {
+        var stepsUsed = 0
+        var stepBudget = 0
+        var estTokens = 0L
+        var screenshots = 0
+        val startedAt = System.currentTimeMillis()
+    }
+    private var acc: RunAccumulator? = null
+    private var statsEmitted = false
+
     /** §19: shrink an oversized observation (elements + page text). */
     private fun compress(obs: PageObservation): PageObservation = obs.copy(
         elements = obs.elements.take(40),
@@ -101,6 +129,8 @@ class AgentEngine(
         this.lastActionFailed = false
         this.observationCompressed = false
         this.visionDisabledForRun = false
+        this.acc = RunAccumulator()
+        this.statsEmitted = false
         setState(State.RUNNING, "Agent starting")
         listener?.onLog("✦ Goal: $goal")
         skill?.let { listener?.onLog("Skill: ${it.name}") }
@@ -147,6 +177,7 @@ class AgentEngine(
         setState(State.CANCELLED, "Agent stopped by user")
         listener?.onLog("■ Agent stopped")
         memory.addRecentTask(goal, "cancelled")
+        emitRunStats("cancelled")
     }
 
     // ------------------------------------------------------------------ loop
@@ -186,6 +217,7 @@ class AgentEngine(
                     continue
                 }
                 budget.consume()
+                acc?.let { it.stepsUsed = budget.used; it.stepBudget = budget.budget }
                 listener?.onLog("— Step ${budget.describe()}")
 
                 // 1) OBSERVE -------------------------------------------------
@@ -232,11 +264,26 @@ class AgentEngine(
 
                 // 3) VISION (policy-gated) -----------------------------------
                 var visionB64: String? = null
+                var marksOnScreen = 0
                 val wantVision = !visionDisabledForRun && (forceVisionNext ||
                     visionPolicy.shouldCapture(obsFinal, lastActionFailed, agentRequestedVision = false, stepIndex = budget.used))
                 if (wantVision) {
                     listener?.onLog("👁 Capturing screenshot for vision model…")
-                    val b64 = sink.screenshotBase64()
+                    acc?.screenshots = (acc?.screenshots ?: 0) + 1
+                    // v1.5.0 Set-of-Marks: badges drawn from the SAME obsFinal
+                    // the model receives (legend and picture can never drift,
+                    // even after §19 compression). Off or failed → plain shot.
+                    val shot = if (settings.somOverlay()) {
+                        try { sink.screenshotAnnotatedBase64(obsFinal) } catch (_: Exception) { null }
+                    } else null
+                    val b64: String?
+                    if (shot != null && shot.marks > 0) {
+                        b64 = shot.base64
+                        marksOnScreen = shot.marks
+                        listener?.onLog("🔖 $marksOnScreen marks drawn — badge N = ref eN")
+                    } else {
+                        b64 = (shot?.base64) ?: sink.screenshotBase64()
+                    }
                     if (b64 != null) {
                         visionB64 = b64
                         listener?.onLog("   screenshot ${(visionB64?.length ?: 0) * 3 / 4 / 1024} KB")
@@ -262,21 +309,24 @@ class AgentEngine(
                 }
 
                 // 4) PLAN (LLM — protocol negotiated per model, Phase 2 §5) ---
+                var stepPromptChars = 0L
                 fun buildMessages(protocol: AgentProtocol): List<ChatMessage> {
                     val messages = mutableListOf<ChatMessage>()
-                    messages.add(
-                        ChatMessage(
-                            role = "system",
-                            text = AgentPrompt.system(
+                    val systemText = AgentPrompt.system(
                                 goal, skill, memory, budget.budget,
                                 injectionWarning = injections.isNotEmpty(),
                                 challengeNote = if (challenge.type != ChallengeResult.NONE) challenge.detail else null,
-                                protocol = protocol
+                                protocol = protocol,
+                                marksEnabled = settings.somOverlay()
                             )
-                        )
-                    )
+                    messages.add(ChatMessage(role = "system", text = systemText))
                     val compressedHistory = if (observationCompressed) history.takeLast(4) else history
-                    messages.add(AgentPrompt.stepMessage(obsFinal, compressedHistory, visionB64, userAnswer, visionDescription))
+                    val stepMsg = AgentPrompt.stepMessage(
+                        obsFinal, compressedHistory, visionB64, userAnswer, visionDescription,
+                        marksLegend = AgentPrompt.marksLegend(marksOnScreen).takeIf { visionB64 != null }
+                    )
+                    messages.add(stepMsg)
+                    stepPromptChars = systemText.length.toLong() + (stepMsg.text?.length ?: 0)
                     return messages
                 }
 
@@ -310,6 +360,10 @@ class AgentEngine(
                 for (event in turn.events) listener?.onLog("· $event")
                 if (observationCompressed) listener?.onLog("· compressed observation in use for this task")
                 val action = turn.decision.toActionJson()
+                acc?.let {
+                    val respChars = action.toString().length + turn.events.sumOf { e -> e.length }
+                    it.estTokens += (stepPromptChars + respChars) / 4
+                }
                 userAnswer = null
                 val note = action.optString("note", "")
                 if (note.isNotBlank()) listener?.onLog("· $note")
@@ -326,6 +380,7 @@ class AgentEngine(
                         setState(State.COMPLETED, summary)
                         session?.add(budget.used, "done", summary, "")
                         memory.addRecentTask(goal, "completed")
+                        emitRunStats("completed")
                         return
                     }
                     "fail" -> {
@@ -532,5 +587,23 @@ class AgentEngine(
     private fun fail(reason: String) {
         session?.let { memory.addRecentTask(goal, "failed") }
         setState(State.FAILED, reason)
+        emitRunStats("failed")
+    }
+
+    /** Exactly-once terminal summary (stop() after completion must not re-emit). */
+    private fun emitRunStats(outcome: String) {
+        val a = acc ?: return
+        if (statsEmitted) return
+        statsEmitted = true
+        listener?.onRunStats(
+            RunResult(
+                stepsUsed = a.stepsUsed,
+                stepBudget = a.stepBudget,
+                estTokens = a.estTokens.toInt(),
+                durationMs = System.currentTimeMillis() - a.startedAt,
+                screenshots = a.screenshots,
+                outcome = outcome
+            )
+        )
     }
 }
