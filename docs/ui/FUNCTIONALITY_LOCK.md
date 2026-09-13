@@ -185,3 +185,34 @@ Baseline is now **185 tests / 20 suites** (was 172/18). `assembleRelease` must
 produce versionCode 6 / versionName 1.5.0. Signing keystore: `app/keystore/`
 (gitignored) — cert SHA-256 `970e0a30…` shared with v1.4.0; persistent backup
 at `~/keystore-backup/cometx-keystore-v1.5.0/`.
+
+---
+
+# § v1.6.0 ADDENDUM — OPERATION COMET LOCAL (on-device llama.cpp AI)
+
+Additive contracts only; everything above remains binding. Full design:
+`docs/agent/LOCAL_AI_ARCHITECTURE.md`.
+
+## A. New behavioral contracts (do not break)
+
+| # | Contract |
+|---|---|
+| LOC-1 | The on-device provider (`id="local"`) participates in the NORMAL router chain; when no model is downloaded (or the native runtime is unavailable) `ModelRouter.chain()` output is byte-identical to v1.5.0 |
+| LOC-2 | Chain position: `local_ai_preferred=false` (default) → local appended LAST (last-resort fallback when every cloud provider failed); `true` → local PREPENDED (local-first). No other reorder |
+| LOC-3 | Cheap readiness: `LocalLlamaProvider.isReady()` never calls JNI and never blocks — selected model file exists + native runtime available. On-demand load happens inside `chat()` |
+| LOC-4 | Context budget: prompts are token-counted BEFORE decode; overflow raises `ContextTooLargeException` (§19 compression) — never silent head-truncation of the system prompt. Native head-trim exists only as a last-resort guard |
+| LOC-5 | Model load and generation are mutually exclusive (manager `ReentrantLock` + provider `AtomicBoolean`); idle watchdog never frees while generating; `AgentEngine.stop()` calls `router.cancelLocal()` to halt the native decode |
+| LOC-6 | Downloads verify SHA-256 against the pinned catalog hash before activation; mismatched files are deleted, never loaded. Imported GGUFs are magic-checked, never checksum-pinned |
+| LOC-7 | On-device `ModelInfo` claims only `{CHAT, JSON_OBJECT, STREAMING}` — never VISION/TOOL_CALLING/JSON_SCHEMA; `describeScreenshot` keeps using cloud vision members |
+| LOC-8 | JNI boundary (`ai.local.LlamaBridge` + GenProgressListener) stays unobfuscated; native `onProgress(IIII[B)V` lookup failure must never discard a generation (JARVIS v1.5.0 lesson) |
+| LOC-9 | llama.cpp is pinned (tag b4458 + tarball SHA-256) in `app/src/main/cpp/CMakeLists.txt`; ABI = arm64-v8a only; x86/unsupported ABIs degrade to "on-device AI unavailable" with zero app impact |
+| LOC-10 | All new settings keys are additive: `local_ai_preferred` (false), `local_model_id`, `local_context` (4096, runtime-clamped ≤4096), `local_threads` (0=auto), `local_unload_min` (10, 0=never) |
+
+## B. Regression gate update
+
+Baseline is now **218 tests / 24 suites** (was 185/20; +4 suites:
+ChatTemplateRendererTest, LocalModelCatalogTest, LocalProviderTest,
+LocalChainTest). `assembleRelease` must produce versionCode 7 /
+versionName 1.6.0 and include `lib/cometx_llama.so` (arm64). Signing keystore:
+`app/keystore/` (gitignored) — cert SHA-256 `970e0a30…` continuity from
+v1.4.0/v1.5.0; persistent backup at `~/keystore-backup/`.

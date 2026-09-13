@@ -22,6 +22,7 @@ import com.cometx.browser.ai.OpenRouterProvider
 import com.cometx.browser.ai.ProviderException
 import com.cometx.browser.ai.SettingsRepository
 import com.cometx.browser.ai.UrlNormalizer
+import com.cometx.browser.CometApp
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
@@ -30,6 +31,7 @@ import com.cometx.browser.security.SecureStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import java.io.File
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -57,6 +59,11 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var root: LinearLayout
 
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    private companion object {
+        /** SAF request code for GGUF import (onActivityResult). */
+        const val REQ_IMPORT_GGUF = 4101
+    }
 
     private val providerNames = mapOf(
         "groq" to "Groq",
@@ -134,6 +141,9 @@ class SettingsActivity : AppCompatActivity() {
 
         header("AI diagnostics")
         addDiagnosticsButtons()
+
+        header("On-device AI (beta)")
+        addLocalAi()
 
         header("Agent behavior")
         addNumberField("Max steps per task (4–60)", settings.maxSteps()) { settings.setMaxSteps(it) }
@@ -583,6 +593,245 @@ class SettingsActivity : AppCompatActivity() {
         } else {
             "Model: AUTO — run Test & Enable to discover models"
         }
+    }
+
+    // ---------------------------------------------------------------- on-device AI (v1.6.0)
+
+    private val localStatusLabels = mutableMapOf<String, TextView>()
+    private var localRefreshTick: Runnable? = null
+
+    private fun addLocalAi() {
+        val local = CometApp.app.localAI
+        if (!local.nativeAvailable()) {
+            body("This device cannot run on-device AI: the native llama.cpp runtime only ships for arm64 phones. Cloud providers keep working normally.")
+            return
+        }
+
+        body("Run the agent fully on this phone with llama.cpp — no API key, works offline, nothing leaves the device. " +
+            "Models are downloaded once from Hugging Face and verified (SHA-256) before activation. " +
+            "On-device models are text-only: vision is served by cloud models when available. Requires a modern arm64 phone.")
+        addCheck("Prefer on-device AI (local-first; cloud as backup)", settings.localAiPreferred()) {
+            settings.setLocalAiPreferred(it)
+            local.autoReloadIfPreferred()
+        }
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = getDrawable(com.cometx.browser.R.drawable.bg_card)
+        }
+        card.addView(TextView(this).apply {
+            text = "This device: ${local.deviceSummary()}"
+            textSize = 12f
+            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
+        })
+        card.addView(TextView(this).apply {
+            text = "Chain position: ${if (settings.localAiPreferred()) "on-device FIRST, cloud backup" else "cloud first, on-device as last-resort fallback"}"
+            textSize = 12f
+            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(2), 0, 0) })
+        root.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(6), 0, dp(6)) })
+
+        for (m in local.allModels()) addLocalModelCard(local, m)
+
+        // section-level controls
+        val testBtn = actionButton("Test active model", Tonal.TONAL)
+        val importBtn = actionButton("Import .gguf file", Tonal.TEXT)
+        row(testBtn, importBtn)
+        testBtn.setOnClickListener { runLocalModelTest(local) }
+        importBtn.setOnClickListener { pickGgufFile() }
+
+        addNumberField("Context size (1024–4096; smaller = less RAM)", settings.localContext()) { settings.setLocalContext(it) }
+        addNumberField("Inference threads (0 = auto-detect fast cores)", settings.localThreads()) { settings.setLocalThreads(it) }
+        addNumberField("Auto-unload after idle minutes (0 = never)", settings.localUnloadMin()) { settings.setLocalUnloadMin(it) }
+
+        // live status refresh while this screen is visible (download progress etc.)
+        localRefreshTick = object : Runnable {
+            override fun run() {
+                refreshLocalStatuses(local)
+                localRefreshTick?.let { android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(it, 800) }
+            }
+        }
+        localRefreshTick?.run()
+    }
+
+    private fun addLocalModelCard(local: com.cometx.browser.ai.local.LocalModelManager, m: com.cometx.browser.ai.local.LocalModelCatalog.CatalogModel) {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = getDrawable(com.cometx.browser.R.drawable.bg_card)
+        }
+        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        lp.setMargins(0, dp(6), 0, dp(6))
+        root.addView(card, lp)
+
+        val titleRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        titleRow.addView(TextView(this).apply {
+            text = "${m.repo.substringBefore('/').take(20)} · ${m.params} · ${m.quant} · ${m.sizeMb} MB"
+            textSize = 15f
+            setTextColor(getColor(com.cometx.browser.R.color.text_primary))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        localStatusLabels[m.id] = TextView(this).apply {
+            textSize = 12f
+            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
+            gravity = android.view.Gravity.END
+        }
+        titleRow.addView(localStatusLabels[m.id], LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        card.addView(titleRow)
+
+        card.addView(TextView(this).apply {
+            text = "${m.fileName}\n${m.strengths}"
+            textSize = 12f
+            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(2), 0, 0) })
+
+        val dl = local.states.value[m.id]
+        val downloaded = local.isDownloaded(m)
+        val active = local.isModelActive(m)
+        val loading = local.isLoading()
+
+        val primary = actionButton(
+            when {
+                dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Downloading -> "Pause"
+                dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Idle && File(local.fileFor(m).absolutePath + ".part").exists() -> "Resume"
+                downloaded -> "Activate"
+                else -> "Download"
+            },
+            if (downloaded && !active) Tonal.FILL else Tonal.TONAL
+        )
+        val secondary = actionButton("Delete", Tonal.TEXT)
+        if (!downloaded && dl == null) secondary.isEnabled = false
+        row(primary, secondary)
+
+        primary.setOnClickListener {
+            when {
+                dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Downloading -> { local.pause(m); buildUi() }
+                dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Idle && File(local.fileFor(m).absolutePath + ".part").exists() -> { local.resume(m); buildUi() }
+                downloaded -> uiScope.launch {
+                    val ok = local.selectAndLoad(m)
+                    if (!ok) {
+                        val fail = (local.loadState.value as? com.cometx.browser.ai.local.LocalModelManager.LoadState.Failed)?.reason
+                        toast(fail ?: "Activation failed")
+                    } else toast("Active: ${m.id}")
+                    buildUi()
+                }
+                else -> { local.download(m); buildUi() }
+            }
+        }
+        secondary.setOnClickListener {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Delete ${m.fileName}?")
+                .setMessage(if (active) "The model is currently active and will be unloaded, then deleted." else "The downloaded file will be removed. You can re-download it anytime.")
+                .setPositiveButton("Delete") { _, _ -> local.delete(m); buildUi() }
+                .setNegativeButton("Cancel", null).show()
+        }
+
+        when {
+            loading && (local.loadState.value as? com.cometx.browser.ai.local.LocalModelManager.LoadState.Loading)?.modelId == m.id ->
+                localStatusLabels[m.id]?.text = "loading into RAM…"
+            active -> localStatusLabels[m.id]?.text = "ACTIVE"
+            dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Downloading -> {
+                val pct = (dl.downloaded * 100 / dl.total.coerceAtLeast(1))
+                localStatusLabels[m.id]?.text = "$pct% · ${dl.speedKbs} KB/s"
+            }
+            dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Verifying ->
+                localStatusLabels[m.id]?.text = "verifying…"
+            dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Failed ->
+                localStatusLabels[m.id]?.text = "✗ ${dl.reason.take(48)}"
+            downloaded -> localStatusLabels[m.id]?.text = "downloaded"
+            else -> localStatusLabels[m.id]?.text = "not downloaded"
+        }
+    }
+
+    private val lastLocalStates = mutableMapOf<String, Boolean>() // modelId → was terminal (Done/Idle)
+
+    private fun refreshLocalStatuses(local: com.cometx.browser.ai.local.LocalModelManager) {
+        var anyTransition = false
+        for (m in local.allModels()) {
+            val tv = localStatusLabels[m.id] ?: continue
+            val dl = local.states.value[m.id]
+            val active = local.isModelActive(m)
+            val terminal = dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Done ||
+                dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Failed
+            if (lastLocalStates[m.id] == false && terminal) anyTransition = true
+            lastLocalStates[m.id] = terminal
+            when {
+                active -> tv.text = "ACTIVE"
+                dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Downloading -> {
+                    val pct = (dl.downloaded * 100 / dl.total.coerceAtLeast(1))
+                    tv.text = "$pct% · ${dl.speedKbs} KB/s"
+                }
+                dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Verifying -> tv.text = "verifying…"
+                dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Failed -> tv.text = "✗ ${dl.reason.take(48)}"
+                local.isDownloaded(m) -> tv.text = "downloaded"
+            }
+        }
+        // a download just finished/failed: rebuild once so buttons match the new state
+        if (anyTransition) { stopLocalRefresh(); buildUi() }
+    }
+
+    private fun runLocalModelTest(local: com.cometx.browser.ai.local.LocalModelManager) {
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Test model").setMessage("Generating…").show()
+        uiScope.launch {
+            val report = local.testActive()
+            runOnUiThread {
+                dialog.dismiss()
+                report.fold(
+                    onSuccess = { r ->
+                        MaterialAlertDialogBuilder(this@SettingsActivity)
+                            .setTitle("Model works")
+                            .setMessage("${r.modelId}\n${r.elapsedMs} ms · ${r.tokens} tok · ${"%.1f".format(r.tokensPerSec)} tok/s\n\nOutput: ${r.snippet}")
+                            .setPositiveButton("OK", null).show()
+                    },
+                    onFailure = { t ->
+                        MaterialAlertDialogBuilder(this@SettingsActivity)
+                            .setTitle("Test failed")
+                            .setMessage(t.message ?: "Unknown error")
+                            .setPositiveButton("OK", null).show()
+                    },
+                )
+            }
+        }
+    }
+
+    private fun pickGgufFile() {
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(android.content.Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "application/gguf"))
+        }
+        startActivityForResult(intent, REQ_IMPORT_GGUF)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_IMPORT_GGUF && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            uiScope.launch {
+                val res = CometApp.app.localAI.import(uri)
+                res.fold(
+                    onSuccess = { f ->
+                        toast("Imported ${f.name}")
+                        val imported = CometApp.app.localAI.importedModels().firstOrNull { it.fileName == f.name }
+                        if (imported != null) CometApp.app.localAI.selectAndLoad(imported)
+                        buildUi()
+                    },
+                    onFailure = { t -> toast("Import failed: ${t.message}") },
+                )
+            }
+        }
+    }
+
+    private fun stopLocalRefresh() {
+        localRefreshTick?.let { android.os.Handler(android.os.Looper.getMainLooper()).removeCallbacks(it) }
+        localRefreshTick = null
+        localStatusLabels.clear()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopLocalRefresh()
     }
 
     // ------------------------------------------------------------- misc widgets

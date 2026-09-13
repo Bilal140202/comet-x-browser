@@ -13,6 +13,7 @@
 | Hybrid perception | compact ref-tagged DOM snapshots, page metadata, policy-gated VLM screenshots, ARIA/role semantics |
 | Real automation | clicks (full pointer-event sequences), typing (React/Vue-safe native setters), selects, scrolling, find-text, find-element, extraction (text/links/tables), zoom, clipboard |
 | Multi-model | Groq, OpenRouter, Hugging Face router, any OpenAI-compatible endpoint — one provider abstraction |
+| On-device AI (v1.6.0) | llama.cpp runtime built in (arm64): download a GGUF model once (SHA-256 verified), and the agent runs **fully offline** — no API key, nothing leaves the phone. Cloud-first by default (local as last-resort fallback) or local-first privacy mode |
 | Model routing | FAST / REASONING / VISION / STRONG / CHEAP roles, user-configurable, cross-provider fallback |
 | Human takeover | Pause / Take Control / Resume at any moment; agent re-observes your changes and continues |
 | Verification challenges | reCAPTCHA/hCaptcha/Cloudflare/MFA/rate-limit detection → pause → **you** solve it → resume (no circumvention, ever) |
