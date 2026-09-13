@@ -40,8 +40,8 @@ android {
         applicationId = "com.cometx.browser"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.6.1"
+        versionCode = 9
+        versionName = "1.7.0"
 
         // v1.6.0 on-device AI: llama.cpp runtime is built from source (pinned,
         // hash-verified) for arm64 only — the architecture of every real phone
@@ -126,6 +126,8 @@ tasks.matching { it.name.startsWith("validateSigningRelease") }.configureEach {
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // v1.7.0: persistent background model downloads (foreground service + retry)
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     // COMET AURORA: Material 3 foundation (tokens, buttons, sheets, dialogs).
     // Dependency decision record: docs/ui/COMET_UI_CURRENT_STATE.md §8

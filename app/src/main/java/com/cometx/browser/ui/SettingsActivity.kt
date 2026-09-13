@@ -693,6 +693,7 @@ class SettingsActivity : AppCompatActivity() {
         val primary = actionButton(
             when {
                 dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Downloading -> "Pause"
+                dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.WaitingNetwork -> "Pause"
                 dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Idle && File(local.fileFor(m).absolutePath + ".part").exists() -> "Resume"
                 downloaded -> "Activate"
                 else -> "Download"
@@ -706,6 +707,7 @@ class SettingsActivity : AppCompatActivity() {
         primary.setOnClickListener {
             when {
                 dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Downloading -> { local.pause(m); buildUi() }
+                dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.WaitingNetwork -> { local.pause(m); buildUi() }
                 dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Idle && File(local.fileFor(m).absolutePath + ".part").exists() -> { local.resume(m); buildUi() }
                 downloaded -> uiScope.launch {
                     val ok = local.selectAndLoad(m)
@@ -715,7 +717,10 @@ class SettingsActivity : AppCompatActivity() {
                     } else toast("Active: ${m.id}")
                     buildUi()
                 }
-                else -> { local.download(m); buildUi() }
+                else -> {
+                    maybeAskNotificationPermission()
+                    local.download(m); buildUi()
+                }
             }
         }
         secondary.setOnClickListener {
@@ -734,6 +739,10 @@ class SettingsActivity : AppCompatActivity() {
                 val pct = (dl.downloaded * 100 / dl.total.coerceAtLeast(1))
                 localStatusLabels[m.id]?.text = "$pct% · ${dl.speedKbs} KB/s"
             }
+            dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.WaitingNetwork -> {
+                val pct = (dl.downloaded * 100 / dl.total.coerceAtLeast(1))
+                localStatusLabels[m.id]?.text = "$pct% · waiting for network…"
+            }
             dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Verifying ->
                 localStatusLabels[m.id]?.text = "verifying…"
             dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Failed ->
@@ -744,6 +753,23 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private val lastLocalStates = mutableMapOf<String, Boolean>() // modelId → was terminal (Done/Idle)
+
+    /**
+     * v1.7.0: background downloads run behind a foreground-service notification.
+     * On Android 13+ the notification is only VISIBLE with POST_NOTIFICATIONS —
+     * ask once, opportunistically; the download itself works either way.
+     */
+    private fun maybeAskNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.POST_NOTIFICATIONS
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            runCatching {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 7001)
+            }
+        }
+    }
 
     private fun refreshLocalStatuses(local: com.cometx.browser.ai.local.LocalModelManager) {
         var anyTransition = false
@@ -760,6 +786,10 @@ class SettingsActivity : AppCompatActivity() {
                 dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Downloading -> {
                     val pct = (dl.downloaded * 100 / dl.total.coerceAtLeast(1))
                     tv.text = "$pct% · ${dl.speedKbs} KB/s"
+                }
+                dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.WaitingNetwork -> {
+                    val pct = (dl.downloaded * 100 / dl.total.coerceAtLeast(1))
+                    tv.text = "$pct% · waiting for network…"
                 }
                 dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Verifying -> tv.text = "verifying…"
                 dl is com.cometx.browser.ai.local.LocalModelManager.DownloadState.Failed -> tv.text = "✗ ${dl.reason.take(48)}"

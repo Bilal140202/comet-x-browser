@@ -16,6 +16,9 @@ class CometApp : Application() {
         localAI = LocalModelManager(this)
         localAI.startIdleWatchdog()
         localAI.autoReloadIfPreferred()
+        // v1.7.0: surface downloads that are queued in WorkManager's persistent
+        // queue (process death / reboot while a background download was active)
+        localAI.reconcileQueuedWork()
     }
 
     companion object {

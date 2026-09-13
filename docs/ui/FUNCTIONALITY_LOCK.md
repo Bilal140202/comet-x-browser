@@ -241,3 +241,30 @@ weakened. Nothing in SOM-1..4 / STAT-1..3 / LOC-1..10 changed.
 Baseline is now **235 tests / 25 suites** (was 218/24; +1 suite:
 TabAndOmniboxTest). `assembleRelease` must produce versionCode 8 /
 versionName 1.6.1. Cert SHA-256 `970e0a30…` continuity maintained.
+
+---
+
+# § v1.7.0 ADDENDUM — BACKGROUND MODEL DOWNLOADS (fast + unattended)
+
+Additive contracts only; everything above remains binding (LOC-6 SHA-256
+verification before activation is preserved unchanged).
+
+## A. New behavioral contracts (do not break)
+
+| # | Contract |
+|---|---|
+| DL-1 | Downloads run in WorkManager (`ModelDownloadWorker`, unique name `cometx-model-<id>`) as a foreground service (`dataSync` type) — they continue while the app is closed, survive process death AND reboots (persistent queue) |
+| DL-2 | Network constraint `CONNECTED` + linear 10s backoff: network fluctuations NEVER surface a failure — work is silently stopped and re-dispatched; UI shows "waiting for network…" with progress retained (`DownloadState.WaitingNetwork`) |
+| DL-3 | Transfer is parallel-chunked (`ChunkPlanner.plan`, default 4 connections, ≥16 MB per chunk) writing into a preallocated `.part` at absolute offsets — no reassembly copy; servers without Range support degrade to the v1.6.0 single-stream path |
+| DL-4 | Per-chunk progress persists in `<file>.part.meta` sidecar (flush every ~16 MB); resume is chunk-granular after crash/process death; cancel deletes `.part` + sidecar |
+| DL-5 | Pause cancels the unique work but keeps parts (Resume button); resume re-enqueues with KEEP policy (no duplicate workers); a paused model never shows "waiting for network" (worker checks `pausedIds`) |
+| DL-6 | The FGS notification channel is IMPORTANCE_LOW, silent, no vibration, ongoing, throttled to one update / 3 s — background downloading must not disturb the user or other apps |
+| DL-7 | `POST_NOTIFICATIONS` is requested opportunistically at Download tap (API 33+); a denial never blocks or fails a download |
+| DL-8 | On app start `LocalModelManager.reconcileQueuedWork()` mirrors WorkManager's queue into the states map so the Settings UI reflects unattended background downloads after process death/reboot |
+| DL-9 | `ChunkPlanner` stays pure Kotlin (no Android imports) — it is part of the JVM test gate |
+
+## B. Regression gate update
+
+Baseline is now **244 tests / 26 suites** (was 235/25; +1 suite:
+ChunkPlannerTest). `assembleRelease` must produce versionCode 9 /
+versionName 1.7.0. Cert SHA-256 `970e0a30…` continuity maintained.
