@@ -2,6 +2,7 @@ package com.cometx.browser.ui
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import com.cometx.browser.util.Logx
@@ -42,6 +43,11 @@ class TabManager(
     }
 
     fun attach(tab: Tab) {
+        // Pause every other tab FIRST (v1.6.1): background WebViews must stop
+        // rendering — a live background surface can keep its last composed
+        // frame on screen after the swap, which looked like "tab did not
+        // switch". Real browsers pause background renderers the same way.
+        for (t in tabs) if (t !== tab) t.webView.onPause()
         container.removeAllViews()
         if (tab.webView.parent != null) {
             (tab.webView.parent as ViewGroup).removeView(tab.webView)
@@ -54,6 +60,11 @@ class TabManager(
             )
         )
         tab.webView.onResume()
+        // Re-attach recompose (v1.6.1): a WebView removed and re-added within
+        // the same frame can keep its previous surface → page looks frozen.
+        // The INVISIBLE→VISIBLE hop on the next frame forces a full recompose.
+        tab.webView.visibility = View.INVISIBLE
+        tab.webView.post { tab.webView.visibility = View.VISIBLE }
         onChanged()
     }
 
@@ -73,6 +84,10 @@ class TabManager(
             newTab("about:blank")
             return true
         }
+        // v1.6.1: removing a tab LEFT of the current one shifts every later tab
+        // down by one — decrement first so the user stays on the page they were
+        // viewing instead of silently landing on the neighbour tab.
+        if (index < currentIndex) currentIndex--
         currentIndex = currentIndex.coerceIn(0, tabs.size - 1)
         attach(tabs[currentIndex])
         return true

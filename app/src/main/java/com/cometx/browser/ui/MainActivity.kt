@@ -1,12 +1,13 @@
 package com.cometx.browser.ui
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
-import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.webkit.WebStorage
 import android.webkit.WebView
@@ -47,6 +48,7 @@ import com.cometx.browser.skills.SkillRecorder
 import com.cometx.browser.skills.SkillRegistry
 import com.cometx.browser.skills.UserSkillStore
 import com.cometx.browser.util.Logx
+import com.cometx.browser.util.UserInput
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -67,6 +69,10 @@ class MainActivity : AppCompatActivity() {
     private var urlBar: EditText? = null
     private var progress: ProgressBar? = null
     private lateinit var container: ViewGroup
+
+    // v1.6.1: while the omnibox commit is in flight, the defocus listener must
+    // not restore the previous page URL over the freshly committed one.
+    private var suppressUrlRestore = false
 
     // ---- providers built once; keys read live from secure store ----
     // v1.6.0: widened to LlmProvider so the on-device llama.cpp provider can
@@ -123,8 +129,8 @@ class MainActivity : AppCompatActivity() {
             }, { tabs.currentIndex },
                 // Tab-level verbs (expert review P0-1): the model can now really use them
                 onOpenTab = { url -> openInNewTab(url) },
-                onSwitchTab = { idx -> runOnUiThread { tabs.switchTo(idx) } },
-                onCloseTab = { idx -> runOnUiThread { tabs.close(idx) } },
+                onSwitchTab = { idx -> runOnUiThread { tabs.switchTo(idx); syncOmniboxToCurrentTab() } },
+                onCloseTab = { idx -> runOnUiThread { tabs.close(idx); syncOmniboxToCurrentTab() } },
                 onDownload = { url -> runOnUiThread { browser.downloadDirect(url) } }
             )
         )
@@ -184,6 +190,16 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnBack).setOnClickListener { tabs.currentWebView?.goBack() }
         findViewById<Button>(R.id.btnForward).setOnClickListener { tabs.currentWebView?.goForward() }
         findViewById<Button>(R.id.btnReload).setOnClickListener { tabs.currentWebView?.reload() }
+        // v1.6.1 Chrome-like omnibox: tapping the bar selects the whole text so
+        // typing replaces it in one go; leaving the bar restores the live page
+        // URL (page-load updates are suppressed while the field has focus).
+        urlBar?.setOnFocusChangeListener { v, hasFocus ->
+            if (hasFocus) {
+                (v as EditText).selectAll()
+            } else if (!suppressUrlRestore) {
+                urlBar?.setText(tabs.current?.url ?: "")
+            }
+        }
         urlBar?.setOnEditorActionListener { v, _, _ ->
             val raw = v.text.toString().trim()
             if (raw.isNotEmpty()) loadUserUrl(raw)
@@ -215,14 +231,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun loadUserUrl(raw: String) {
-        val input = raw.trim()
-        val url = when {
-            input.startsWith("http://") || input.startsWith("https://") -> input
-            input.contains(" ") || !input.contains(".") -> "https://www.google.com/search?q=" + Uri.encode(input)
-            else -> "https://$input"
-        }
+        val url = UserInput.resolve(raw)
+        if (url.isEmpty()) return
+        suppressUrlRestore = true
         urlBar?.setText(url)
         tabs.currentWebView?.loadUrl(url)
+        // Chrome behavior: commit releases the omnibox — keyboard closes and
+        // live page-URL updates resume (they were suppressed while focused, so
+        // a stuck load previously looked like "nothing happens").
+        urlBar?.let { bar ->
+            (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                ?.hideSoftInputFromWindow(bar.windowToken, 0)
+            bar.clearFocus()
+        }
+        suppressUrlRestore = false
     }
 
     fun openInNewTab(url: String) {
@@ -231,9 +253,20 @@ class MainActivity : AppCompatActivity() {
             val lower = url.trim().lowercase()
             if (lower.startsWith("http://") || lower.startsWith("https://")) {
                 tabs.newTab(url.trim())
+                syncOmniboxToCurrentTab()
             } else {
                 Toast.makeText(this, "Blocked non-web URL", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    /** v1.6.1: omnibox must mirror the CURRENT tab after sheet-driven tab ops. */
+    private fun syncOmniboxToCurrentTab() {
+        urlBar?.let { bar ->
+            suppressUrlRestore = true
+            if (bar.hasFocus()) bar.clearFocus()
+            bar.setText(tabs.current?.url ?: "")
+            suppressUrlRestore = false
         }
     }
 
@@ -268,8 +301,8 @@ class MainActivity : AppCompatActivity() {
         menu.menu.add("Settings")
         menu.setOnMenuItemClickListener { item ->
             when (item.title) {
-                "New tab" -> tabs.newTab(settings.homepage())
-                "Close current tab" -> tabs.closeCurrent()
+                "New tab" -> { tabs.newTab(settings.homepage()); syncOmniboxToCurrentTab() }
+                "Close current tab" -> { tabs.closeCurrent(); syncOmniboxToCurrentTab() }
                 "Clear browsing data" -> confirmClearData()
                 "Agent self-test (local pages)" -> startSelfTest()
                 "Settings" -> startActivity(Intent(this, SettingsActivity::class.java))
@@ -314,21 +347,26 @@ class MainActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(R.layout.sheet_tabs, null)
         view.findViewById<TextView>(R.id.tabCount).text = "Tabs (${snapshot.size})"
         val list = view.findViewById<ListView>(R.id.tabList)
-        list.adapter = TabSheetAdapter(snapshot, activeIndex) { which ->
-            tabs.close(which)
-            sheet.dismiss()
-        }
-        list.setOnItemClickListener { _, _, which, _ ->
-            tabs.switchTo(which)
-            sheet.dismiss()
-        }
-        list.setOnItemLongClickListener { _, _, which, _ ->
-            tabs.close(which)
-            sheet.dismiss()
-            true
-        }
+        // v1.6.1: switch/close are handled ON THE ROW (adapter) — ListView's
+        // item-click machinery is unreliable inside bottom sheets once a row
+        // carries a clickable child or the tap picks up a little vertical
+        // drift (gesture misread as a drag → "tapping tab names does nothing").
+        list.adapter = TabSheetAdapter(
+            snapshot, activeIndex,
+            onSwitch = { which ->
+                tabs.switchTo(which)
+                syncOmniboxToCurrentTab()
+                sheet.dismiss()
+            },
+            onClose = { which ->
+                tabs.close(which)
+                syncOmniboxToCurrentTab()
+                sheet.dismiss()
+            }
+        )
         view.findViewById<View>(R.id.btnNewTab).setOnClickListener {
             tabs.newTab(settings.homepage())
+            syncOmniboxToCurrentTab()
             sheet.dismiss()
         }
         sheet.setContentView(view)
@@ -339,6 +377,7 @@ class MainActivity : AppCompatActivity() {
     private inner class TabSheetAdapter(
         private val items: List<Pair<String, String>>,
         private val active: Int,
+        private val onSwitch: (Int) -> Unit,
         private val onClose: (Int) -> Unit
     ) : android.widget.BaseAdapter() {
         override fun getCount(): Int = items.size
@@ -353,15 +392,30 @@ class MainActivity : AppCompatActivity() {
             row.findViewById<TextView>(R.id.tabAvatar).text =
                 title.trim().take(1).uppercase().ifBlank { "?" }
             row.isSelected = position == active
+            row.setOnClickListener { onSwitch(position) }
+            row.setOnLongClickListener { onClose(position); true }
             row.findViewById<View>(R.id.btnCloseTab).setOnClickListener { onClose(position) }
             return row
         }
     }
 
     override fun onBackPressed() {
+        // Chrome parity (v1.6.1): back while the omnibox is focused just leaves
+        // the editor (URL restored, keyboard closed) instead of leaving the app.
+        val bar = urlBar
+        if (bar != null && bar.hasFocus()) {
+            bar.clearFocus()
+            hideKeyboard(bar)
+            return
+        }
         if (panel.isVisible()) { panel.collapse(); return }
         val web = tabs.currentWebView
         if (web?.canGoBack() == true) web.goBack() else super.onBackPressed()
+    }
+
+    private fun hideKeyboard(bar: EditText) {
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+            ?.hideSoftInputFromWindow(bar.windowToken, 0)
     }
 
     override fun onPause() {

@@ -216,3 +216,28 @@ LocalChainTest). `assembleRelease` must produce versionCode 7 /
 versionName 1.6.0 and include `lib/cometx_llama.so` (arm64). Signing keystore:
 `app/keystore/` (gitignored) — cert SHA-256 `970e0a30…` continuity from
 v1.4.0/v1.5.0; persistent backup at `~/keystore-backup/`.
+
+---
+
+# § v1.6.1 ADDENDUM — DAILY-DRIVER FIXES (tab switching + omnibox)
+
+Bug-fix release from user field reports; additive only, no contract above is
+weakened. Nothing in SOM-1..4 / STAT-1..3 / LOC-1..10 changed.
+
+## A. Fixed behaviors (now binding)
+
+| # | Contract |
+|---|---|
+| FIX-1 | Tab sheet rows switch tabs via ROW-level click listeners (`row.setOnClickListener`) — ListView item-click machinery inside bottom sheets is no longer relied on |
+| FIX-2 | `TabManager.attach()` pauses every other tab's WebView, resumes the attached one, and forces a recompose (INVISIBLE → posted VISIBLE) — a re-attached WebView must never keep a stale/frozen surface |
+| FIX-3 | Closing a tab LEFT of the current one decrements the index first — the user stays on the page they were viewing |
+| FIX-4 | Omnibox is Chrome-like: focus selects the whole text (type-to-replace); defocus restores the live page URL; GO closes the keyboard and releases focus so live URL updates resume (fixes "search feels stuck") |
+| FIX-5 | After ANY tab open/switch/close (sheet, menu, agent tab-verbs, external links) the omnibox mirrors the CURRENT tab (`syncOmniboxToCurrentTab`) |
+| FIX-6 | Omnibox "URL or search?" resolution lives in `util/UserInput.resolve()` (pure JVM); rules unchanged from v1.6.0 inline behavior |
+| FIX-7 | Back while the omnibox is focused leaves the editor (URL restored, keyboard closed) instead of leaving the app |
+
+## B. Regression gate update
+
+Baseline is now **235 tests / 25 suites** (was 218/24; +1 suite:
+TabAndOmniboxTest). `assembleRelease` must produce versionCode 8 /
+versionName 1.6.1. Cert SHA-256 `970e0a30…` continuity maintained.
