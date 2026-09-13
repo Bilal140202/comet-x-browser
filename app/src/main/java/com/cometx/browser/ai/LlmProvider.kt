@@ -17,6 +17,14 @@ interface LlmProvider {
     val displayName: String
     val defaultBaseUrl: String
 
+    /**
+     * v1.6.0: model id to use for providers WITHOUT catalog discovery
+     * (embedded/scripted runtimes, e.g. the on-device llama.cpp provider).
+     * Null → the router falls back to its advisory defaultModelFor() map.
+     */
+    val defaultModelId: String?
+        get() = null
+
     /** True if the provider is configured (has an API key) and enabled. */
     fun isReady(): Boolean
 

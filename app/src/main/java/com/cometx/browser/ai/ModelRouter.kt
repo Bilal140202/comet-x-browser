@@ -1,5 +1,6 @@
 package com.cometx.browser.ai
 
+import com.cometx.browser.ai.local.LocalLlamaProvider
 import com.cometx.browser.util.Logx
 import org.json.JSONObject
 
@@ -108,12 +109,25 @@ class ModelRouter(
 
     // ------------------------------------------------------------------ chain
 
-    /** The live fallback chain: enabled + configured providers in user-defined order. */
+    /**
+     * The live fallback chain: enabled + configured providers in user-defined order.
+     *
+     * v1.6.0: the on-device provider joins the chain ADDITIVELY — appended LAST
+     * (a safety net when every cloud provider failed) or, when the user turned
+     * on "prefer on-device AI", PREPENDED (local-first, privacy mode). When no
+     * local model is downloaded — or the native runtime is unavailable — the
+     * chain is byte-identical to pre-1.6.0 behavior.
+     */
     fun chain(): List<LlmProvider> {
         val byId = providers.values.associateBy { it.id }
         val configured = settings.liveChain().mapNotNull { byId[it] }.filter { it.isReady() }
-        if (configured.isNotEmpty()) return configured
-        return providers.values.filter { it.isReady() && it.id !in SettingsRepository.ALL_PROVIDERS }
+        val remote = if (configured.isNotEmpty()) configured
+        else providers.values.filter {
+            it.isReady() && it.id !in SettingsRepository.ALL_PROVIDERS && it.id != SettingsRepository.LOCAL_PROVIDER_ID
+        }
+        val local = byId[SettingsRepository.LOCAL_PROVIDER_ID]?.takeIf { it.isReady() }
+            ?: return remote
+        return if (settings.localAiPreferred()) listOf(local) + remote else remote + listOf(local)
     }
 
     // -------------------------------------------------------------- resolution
@@ -149,8 +163,13 @@ class ModelRouter(
         }
 
         // ---- AUTO: discovery + ranking ----
-        val oai = p as? OpenAICompatibleProvider
-            ?: return manualCandidate(p, role, defaultModelFor(p.id, role))  // embedded/scripted provider
+        val oai = p as? OpenAICompatibleProvider ?: run {
+            // Embedded/scripted runtime (e.g. on-device llama.cpp): no discovery —
+            // the provider names its own model (v1.6.0 defaultModelId).
+            val modelId = p.defaultModelId ?: defaultModelFor(p.id, role)
+            events.add("${p.displayName}: $modelId")
+            return manualCandidate(p, role, modelId)
+        }
         val cat = catalog ?: return manualCandidate(p, role, defaultModelFor(p.id, role))
         val models = cat.models(oai) ?: run {
             events.add("${p.displayName}: model discovery failed")
@@ -370,6 +389,15 @@ class ModelRouter(
     private fun nextCandidateOrExit(p: LlmProvider, cands: List<ModelRanker.Scored>, idx: Int, events: MutableList<String>, why: String): Boolean {
         events.add("${p.displayName}: $why — next candidate")
         return idx >= cands.size - 1
+    }
+
+    /**
+     * v1.6.0: natively cancel an in-flight ON-DEVICE generation (coroutine
+     * cancellation alone cannot stop a blocking native decode — the engine's
+     * stop() calls this so the CPU work actually halts).
+     */
+    fun cancelLocal() {
+        (providers[SettingsRepository.LOCAL_PROVIDER_ID] as? LocalLlamaProvider)?.cancel()
     }
 
     private fun logEvents(events: List<String>) {

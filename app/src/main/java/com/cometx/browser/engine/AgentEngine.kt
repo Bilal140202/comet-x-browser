@@ -168,6 +168,9 @@ class AgentEngine(
     fun stop() {
         job?.cancel()
         job = null
+        // v1.6.0: coroutine cancel cannot interrupt a blocking native decode —
+        // explicitly halt the on-device engine so the CPU work actually stops.
+        router.cancelLocal()
         synchronized(gateLock) {
             pendingAnswerArrived = false
             pendingConfirmArrived = false

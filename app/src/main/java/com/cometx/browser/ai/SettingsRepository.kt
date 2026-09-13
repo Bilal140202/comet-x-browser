@@ -22,6 +22,10 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
 
     companion object {
         val ALL_PROVIDERS = listOf("groq", "openrouter", "huggingface", "custom")
+
+        /** v1.6.0: the on-device llama.cpp provider lives OUTSIDE ALL_PROVIDERS —
+         *  it is never key-configured; it is ready when a model file is downloaded. */
+        const val LOCAL_PROVIDER_ID = "local"
     }
 
     // ---------- Providers ----------
@@ -182,6 +186,28 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
 
     fun thirdPartyCookies(): Boolean = prefs.getBoolean("third_party_cookies", false)
     fun setThirdPartyCookies(v: Boolean) = prefs.edit().putBoolean("third_party_cookies", v).apply()
+
+    // ---------- On-device AI (v1.6.0, additive) ----------
+
+    /** Local-first mode: when ON, the on-device model is tried BEFORE cloud providers. */
+    fun localAiPreferred(): Boolean = prefs.getBoolean("local_ai_preferred", false)
+    fun setLocalAiPreferred(v: Boolean) = prefs.edit().putBoolean("local_ai_preferred", v).apply()
+
+    /** Last activated local model id (catalog id or "imported:<file>"). */
+    fun localModelId(): String? = prefs.getString("local_model_id", null)
+    fun setLocalModelId(id: String?) = prefs.edit().putString("local_model_id", id).apply()
+
+    /** Runtime context window for the local model (clamped at use to ≤4096). */
+    fun localContext(): Int = prefs.getInt("local_context", 4096)
+    fun setLocalContext(n: Int) = prefs.edit().putInt("local_context", n.coerceIn(1024, 8192)).apply()
+
+    /** Inference threads; 0 = auto (physical performance cores via sysfs). */
+    fun localThreads(): Int = prefs.getInt("local_threads", 0)
+    fun setLocalThreads(n: Int) = prefs.edit().putInt("local_threads", n.coerceIn(0, 8)).apply()
+
+    /** Idle minutes before the local model is unloaded (0 = never). */
+    fun localUnloadMin(): Int = prefs.getInt("local_unload_min", 10)
+    fun setLocalUnloadMin(n: Int) = prefs.edit().putInt("local_unload_min", n.coerceIn(0, 240)).apply()
 
     // ---------- Browser ----------
 

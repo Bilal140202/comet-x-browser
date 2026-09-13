@@ -40,8 +40,34 @@ android {
         applicationId = "com.cometx.browser"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.5.0"
+        versionCode = 7
+        versionName = "1.6.0"
+
+        // v1.6.0 on-device AI: llama.cpp runtime is built from source (pinned,
+        // hash-verified) for arm64 only — the architecture of every real phone
+        // shipped since 2015. x86 emulators degrade gracefully (no on-device AI).
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags += ""
+                arguments += listOf(
+                    "-DANDROID_STL=c++_shared",
+                    "-DCMAKE_BUILD_TYPE=Release"
+                )
+            }
+        }
+    }
+
+    // NDK 27 + CMake 3.22.1 (same era as the JARVIS reference implementation)
+    ndkVersion = "27.0.12077973"
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     signingConfigs {

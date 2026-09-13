@@ -21,6 +21,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.cometx.browser.CometApp
+import com.cometx.browser.ai.LlmProvider
 import com.cometx.browser.R
 import com.cometx.browser.ai.CustomOpenAIProvider
 import com.cometx.browser.ai.GroqProvider
@@ -68,7 +69,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var container: ViewGroup
 
     // ---- providers built once; keys read live from secure store ----
-    private lateinit var providers: Map<String, OpenAICompatibleProvider>
+    // v1.6.0: widened to LlmProvider so the on-device llama.cpp provider can
+    // join the router chain; OpenAI-specific calls cast explicitly.
+    private lateinit var providers: Map<String, LlmProvider>
     private lateinit var router: ModelRouter
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -90,11 +93,16 @@ class MainActivity : AppCompatActivity() {
             "custom" to CustomOpenAIProvider(
                 keyProvider = { settings.apiKey("custom") },
                 readyCheck = { !settings.apiKey("custom").isNullOrBlank() || !settings.baseUrl("custom").isNullOrBlank() }
-            )
+            ),
+            // v1.6.0: on-device llama.cpp provider (app-scoped singleton so the
+            // loaded model survives Settings round-trips and activity recreation)
+            SettingsRepository.LOCAL_PROVIDER_ID to CometApp.app.localAI.provider
         )
         // apply user-saved base URLs (self-run endpoints) — previously silently ignored
         for ((pid, prov) in providers) {
-            settings.baseUrl(pid)?.let { prov.setBaseUrl(UrlNormalizer.normalize(it)) }
+            (prov as? OpenAICompatibleProvider)?.let { oai ->
+                settings.baseUrl(pid)?.let { oai.setBaseUrl(UrlNormalizer.normalize(it)) }
+            }
         }
         // Phase 2 migration: v1.1.0 per-role model picks become optional Advanced overrides
         settings.runModeMigration()
@@ -368,7 +376,9 @@ class MainActivity : AppCompatActivity() {
         // Expert review P1-7: re-apply saved base URLs so Settings edits reach
         // the live providers without a process restart.
         for ((pid, prov) in providers) {
-            settings.baseUrl(pid)?.let { prov.setBaseUrl(UrlNormalizer.normalize(it)) }
+            (prov as? OpenAICompatibleProvider)?.let { oai ->
+                settings.baseUrl(pid)?.let { oai.setBaseUrl(UrlNormalizer.normalize(it)) }
+            }
         }
     }
 
