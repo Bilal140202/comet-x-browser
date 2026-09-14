@@ -31,6 +31,7 @@ import com.cometx.browser.ai.ModelCatalog
 import com.cometx.browser.ai.ModelRouter
 import com.cometx.browser.ai.OpenAICompatibleProvider
 import com.cometx.browser.ai.OpenRouterProvider
+import com.cometx.browser.ai.ProviderSet
 import com.cometx.browser.ai.SettingsRepository
 import com.cometx.browser.ai.UrlNormalizer
 import com.cometx.browser.automation.ActionExecutor
@@ -92,24 +93,12 @@ class MainActivity : AppCompatActivity() {
         val skills = SkillRegistry(app)
         val executor = ActionExecutor(this)
 
-        providers = mapOf(
-            "groq" to GroqProvider(keyProvider = { settings.apiKey("groq") }),
-            "openrouter" to OpenRouterProvider(keyProvider = { settings.apiKey("openrouter") }),
-            "huggingface" to HuggingFaceProvider(keyProvider = { settings.apiKey("huggingface") }),
-            "custom" to CustomOpenAIProvider(
-                keyProvider = { settings.apiKey("custom") },
-                readyCheck = { !settings.apiKey("custom").isNullOrBlank() || !settings.baseUrl("custom").isNullOrBlank() }
-            ),
-            // v1.6.0: on-device llama.cpp provider (app-scoped singleton so the
-            // loaded model survives Settings round-trips and activity recreation)
-            SettingsRepository.LOCAL_PROVIDER_ID to CometApp.app.localAI.provider
-        )
+        // v1.8.0: provider construction lives in ProviderSet (shared with the
+        // background agent service — one map, no drift). Same providers, same
+        // live key reads, byte-identical behavior to the v1.7.0 inline map.
+        providers = ProviderSet.build(settings)
         // apply user-saved base URLs (self-run endpoints) — previously silently ignored
-        for ((pid, prov) in providers) {
-            (prov as? OpenAICompatibleProvider)?.let { oai ->
-                settings.baseUrl(pid)?.let { oai.setBaseUrl(UrlNormalizer.normalize(it)) }
-            }
-        }
+        ProviderSet.applyBaseUrls(settings, providers)
         // Phase 2 migration: v1.1.0 per-role model picks become optional Advanced overrides
         settings.runModeMigration()
         router = ModelRouter(settings, providers, ModelCatalog(app))
@@ -184,6 +173,17 @@ class MainActivity : AppCompatActivity() {
         )
         engine.bind(panel)
 
+        // v1.8.0: background agent launcher — request the notification perm
+        // opportunistically (denial never blocks, DL-7 spirit) and hand the
+        // goal to the isolated foreground service.
+        panel.launchBackground = { goal ->
+            maybeAskNotificationPermission()
+            runCatching { com.cometx.browser.background.AgentTaskService.start(this, goal) }
+                .onFailure {
+                    Toast.makeText(this, "Could not start the background task", Toast.LENGTH_SHORT).show()
+                }
+        }
+
         // ---- top bar ----
         urlBar = findViewById(R.id.urlBar)
         progress = findViewById(R.id.progress)
@@ -223,11 +223,37 @@ class MainActivity : AppCompatActivity() {
         val startUrl = intent?.dataString ?: settings.homepage()
         tabs.newTab(startUrl)
         memory.lastBrowserState()?.let { (u, _) -> if (startUrl == settings.homepage() && u.isNotBlank()) { /* restore hint only */ } }
+
+        // v1.8.0: notification tap → open the agent panel (background monitor)
+        if (intent?.getBooleanExtra(com.cometx.browser.background.AgentNotifications.EXTRA_OPEN_PANEL, false) == true) {
+            panel.expand()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.dataString?.let { openInNewTab(it) }
+        // v1.8.0: notification tap while the app is alive
+        if (intent.getBooleanExtra(com.cometx.browser.background.AgentNotifications.EXTRA_OPEN_PANEL, false)) {
+            panel.expand()
+        }
+    }
+
+    /**
+     * v1.8.0: background tasks report through a foreground-service
+     * notification — on Android 13+ it is only VISIBLE with POST_NOTIFICATIONS.
+     * Ask once, opportunistically; the task itself runs either way.
+     */
+    private fun maybeAskNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.POST_NOTIFICATIONS
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            runCatching {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 8001)
+            }
+        }
     }
 
     fun loadUserUrl(raw: String) {
@@ -429,11 +455,7 @@ class MainActivity : AppCompatActivity() {
         tabs.currentWebView?.onResume()
         // Expert review P1-7: re-apply saved base URLs so Settings edits reach
         // the live providers without a process restart.
-        for ((pid, prov) in providers) {
-            (prov as? OpenAICompatibleProvider)?.let { oai ->
-                settings.baseUrl(pid)?.let { oai.setBaseUrl(UrlNormalizer.normalize(it)) }
-            }
-        }
+        ProviderSet.applyBaseUrls(settings, providers)
     }
 
     override fun onDestroy() {

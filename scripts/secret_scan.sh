@@ -17,14 +17,15 @@ PATTERNS=(
   '-----BEGIN (RSA|EC|OPENSSH|PGP|DSA) PRIVATE KEY-----'
   '(password|passwd|secret|token)[[:space:]]*[=:][[:space:]]*["'\''][^"'\'' ]{12,}'
 )
-EXCLUDES=(
-  ':!*.md' ':!scripts/secret_scan.sh' ':!.git/*'
-)
+# PromptInjectionDetector.kt carries the DEFENSIVE key-shape regexes (rule
+# patterns only — char classes, never real credentials); same allowlist class
+# as the FAKE fixtures in tests.
+DET='app/src/main/java/com/cometx/browser/security/PromptInjectionDetector.kt'
 echo "Scanning $TARGET for secrets..."
 for p in "${PATTERNS[@]}"; do
   # -I: skip binaries. Test sources are allowlisted: they legitimately contain
   # FAKE key-shaped fixtures for detector tests (marked FAKE in the file).
-  MATCHES=$(grep -rIl -E "$p" "$TARGET" --exclude-dir=.git --exclude-dir=build --exclude-dir=.gradle \
+  MATCHES=$(grep -rIl -E "$p" "$TARGET" --exclude-dir=.git --exclude-dir=build --exclude-dir=.gradle --exclude-dir=.cxx \
     --exclude="secret_scan.sh" --exclude="*.md" --exclude="*Test.kt" 2>/dev/null || true)
   if [ -n "$MATCHES" ]; then
     echo "SECRET PATTERN HIT [$p]:"
@@ -35,7 +36,7 @@ done
 # also scan git history if this is a repo
 if [ -d "$TARGET/.git" ]; then
   for p in "${PATTERNS[@]}"; do
-    HITS=$(git -C "$TARGET" log --all -p -S"$p" --oneline 2>/dev/null | head -5 || true)
+    HITS=$(git -C "$TARGET" log --all -p -S"$p" --oneline -- . ":(exclude)scripts/secret_scan.sh" ":(exclude)$DET" 2>/dev/null | head -5 || true)
     if [ -n "$HITS" ]; then
       echo "GIT HISTORY PATTERN HIT [$p]"
       FOUND=1

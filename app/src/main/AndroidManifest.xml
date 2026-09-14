@@ -12,6 +12,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- v1.8.0 background agent: the headless task engine must not stall in
+         deep sleep mid-task; the lock is renewed per step and released at
+         every pause/terminal state. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application
         android:name=".CometApp"
         android:allowBackup="false"
@@ -27,6 +32,15 @@
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
+
+        <!-- v1.8.0: background agent engine. NOT exported (only the app and its
+             own notification PendingIntents may reach it); START_NOT_STICKY —
+             the system never resurrects it with a null goal, so a reboot can
+             never crash-loop the app ("App keep closing" contract BG-7). -->
+        <service
+            android:name=".background.AgentTaskService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <activity
             android:name=".ui.MainActivity"

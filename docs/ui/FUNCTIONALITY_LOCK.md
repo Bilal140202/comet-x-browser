@@ -268,3 +268,36 @@ verification before activation is preserved unchanged).
 Baseline is now **244 tests / 26 suites** (was 235/25; +1 suite:
 ChunkPlannerTest). `assembleRelease` must produce versionCode 9 /
 versionName 1.7.0. Cert SHA-256 `970e0a30…` continuity maintained.
+
+---
+
+# § v1.8.0 ADDENDUM — BACKGROUND AGENT MODE (isolated headless task engine)
+
+Additive contracts only; everything above remains binding. The foreground
+agent (panel → visible tab via `LiveWebViewSink`) is untouched: with no
+background run started, behavior is byte-identical to v1.7.0. The background
+engine reuses the SAME AgentEngine, ActionValidator, SafetyPolicy, StepBudget
+and ActionExecutor pipeline — only the driver (sink) and the host differ.
+
+## A. New behavioral contracts (do not break)
+
+| # | Contract |
+|---|---|
+| BG-1 | "Run in background" starts `AgentTaskService` (FGS, `dataSync` type) which owns an ISOLATED headless WebView (`HeadlessWebViewFactory`) — never attached to any window, never part of the user's tab strip. User's tabs, omnibox, panels and TabManager state are structurally unreachable from the background engine |
+| BG-2 | One background task at a time; the store (`BackgroundAgentStore`, app-scoped) persists EVERY mutation atomically (tmp+rename) to `filesDir/agent/background_agent_state.json` BEFORE listeners fire |
+| BG-3 | Monitoring lives in the notification bar: silent IMPORTANCE_LOW channel `cometx_agent`, one ongoing notification mirroring the record — step counter + progress bar + last action while RUNNING; tap → opens the agent panel monitor card |
+| BG-4 | Human gates surface in the shade: high-risk confirms show Approve/Deny buttons; `ask_user` shows a direct Reply (RemoteInput) field; challenges show "tap to take control". Human-gate timeout is extended to 45 min in background runs (`AgentEngine.gateTimeoutMs`, additive hook; UI paths keep the 15 min default) |
+| BG-5 | Network fluctuations NEVER surface a failure: failed model steps and unreadable pages are offered to `AgentEngine.networkWaitGate` (additive, null in all UI paths). The service's gate (`NetworkWaitPolicy` + `NetworkWaiter`) parks the step — budget refunded — while offline (up to 5 min) and the shade shows "Waiting for network — the task continues automatically". Non-network errors fail exactly as before |
+| BG-6 | The panel shows a live monitor card fed by the store listener; terminal transitions are mirrored into the agent log exactly once per state change |
+| BG-7 | NO boot receiver and NO auto-resume: after a reboot nothing of ours runs (nothing can crash-loop — no "App keep closing" on restart). START_NOT_STICKY; a null-intent or goal-less start goes foreground once (ANR-safe) then stops silently. At the next app start `reconcileInterrupted()` marks an orphaned active record INTERRUPTED — honestly labeled, never auto-restarted |
+| BG-8 | Crash containment: every service entry point (onStartCommand, engine callbacks, network callback, onDestroy, notification builds) is wrapped — failures degrade the TASK's notification, never the process. A headless renderer crash (`onRenderProcessGone`) fails the task gracefully instead of killing the app |
+| BG-9 | The headless WebView carries the same security posture as the browser (JS on, file/content access off, mixed content never, no geolocation, no JS bridge); non-http(s) schemes are silently refused (no user to approve intent://), executable downloads (.exe/.apk/…) are REFUSED unattended; non-executable downloads go to the system DownloadManager with its own progress UI |
+| BG-10 | Wake lock (`PARTIAL_WAKE_LOCK`, 5-min budget renewed per step) keeps the task alive in deep sleep; released on every pause/terminal state and in onDestroy |
+| BG-11 | Provider construction lives in `ai/ProviderSet` — the single source for the router chain used by BOTH the activity engine and the background service (keys still read live from settings; base URLs re-applied on resume as before) |
+| BG-12 | `NetworkWaitPolicy` stays pure JVM (no Android imports) — it is part of the JVM test gate |
+
+## B. Regression gate update
+
+Baseline is now **265 tests / 27 suites** (was 244/26; +1 suite:
+BackgroundAgentTest). `assembleRelease` must produce versionCode 10 /
+versionName 1.8.0. Cert SHA-256 `970e0a30…` continuity maintained.

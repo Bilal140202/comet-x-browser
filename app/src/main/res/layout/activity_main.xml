@@ -396,6 +396,57 @@
                 android:visibility="gone" />
         </LinearLayout>
 
+        <!-- v1.8.0: hand the task to the background engine (isolated headless
+             browser + foreground service; progress lives in the notification) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnRunBackground"
+            style="@style/Comet.Button.Outlined"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:layout_marginTop="6dp"
+            android:text="@string/run_background"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <!-- v1.8.0: live monitor for the background task while the app is open.
+             The authoritative control surface is the notification shade. -->
+        <LinearLayout
+            android:id="@+id/backgroundCard"
+            android:background="@drawable/bg_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp"
+            android:padding="12dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/backgroundTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/bg_card_title"
+                android:textColor="@color/primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/backgroundStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/on_surface_variant"
+                android:textSize="12sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnBgStop"
+                style="@style/Comet.Button.Danger"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:layout_marginTop="6dp"
+                android:text="@string/bg_card_stop"
+                android:textSize="12sp" />
+        </LinearLayout>
+
         <!-- run summary (v1.5.0): steps · est. tokens · duration · outcome -->
         <TextView
             android:id="@+id/statsText"

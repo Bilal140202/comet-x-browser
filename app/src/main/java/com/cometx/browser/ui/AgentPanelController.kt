@@ -86,6 +86,12 @@ class AgentPanelController(
     private var btnTakeControl: Button
     private var btnResume: Button
     private var btnStop: Button
+    // v1.8.0 background mode: launcher + live monitor card
+    private var btnRunBackground: Button
+    private var backgroundCard: LinearLayout
+    private var backgroundStatus: TextView
+    private var btnBgStop: Button
+    private var lastBgState: String? = null
     private var answerRow: LinearLayout
     private var answerInput: EditText
     private var logList: ListView
@@ -123,6 +129,10 @@ class AgentPanelController(
         btnTakeControl = activity.findViewById(R.id.btnTakeControl)
         btnResume = activity.findViewById(R.id.btnResume)
         btnStop = activity.findViewById(R.id.btnStop)
+        btnRunBackground = activity.findViewById(R.id.btnRunBackground)
+        backgroundCard = activity.findViewById(R.id.backgroundCard)
+        backgroundStatus = activity.findViewById(R.id.backgroundStatus)
+        btnBgStop = activity.findViewById(R.id.btnBgStop)
         answerRow = activity.findViewById(R.id.answerRow)
         answerInput = activity.findViewById(R.id.answerInput)
         logList = activity.findViewById(R.id.logList)
@@ -136,6 +146,13 @@ class AgentPanelController(
         askBar.setOnClickListener { expand() }
 
         btnRun.setOnClickListener { runFromInput() }
+        // v1.8.0: hand the same goal to the ISOLATED background engine. The
+        // foreground engine and the user's tabs are never touched.
+        btnRunBackground.setOnClickListener { runInBackgroundFromInput() }
+        btnBgStop.setOnClickListener {
+            runCatching { com.cometx.browser.background.AgentTaskService.stop(activity) }
+            Toast.makeText(activity, "Stopping background task…", Toast.LENGTH_SHORT).show()
+        }
         btnGrillMe.setOnClickListener { startGrillMe("") }
         btnRecord.setOnClickListener { onRecordButton() }
         btnTakeControl.setOnClickListener {
@@ -169,6 +186,9 @@ class AgentPanelController(
         buildSkillChips()
         refreshUserSkillChips()
 
+        // v1.8.0: live monitor of the background task store (app-scoped)
+        runCatching { com.cometx.browser.CometApp.app.agentStore.addListener(bgStoreListener) }
+
         // cold-start: the engine emits nothing until the first event — show IDLE
         applyAgentState(AgentEngine.State.IDLE, "")
 
@@ -182,6 +202,7 @@ class AgentPanelController(
     /** Called from MainActivity.onDestroy — releases the motion ContentObserver. */
     fun dispose() {
         try { activity.contentResolver.unregisterContentObserver(motionObserver) } catch (_: Exception) {}
+        runCatching { com.cometx.browser.CometApp.app.agentStore.removeListener(bgStoreListener) }
         stopPulse()
     }
 
@@ -537,6 +558,60 @@ class AgentPanelController(
 
     // ------------------------------------------------------- run / input
 
+    /** Set by MainActivity: asks for POST_NOTIFICATIONS and starts the FGS. */
+    var launchBackground: ((String) -> Unit)? = null
+
+    private fun runInBackgroundFromInput() {
+        val goal = goalInput.text.toString().trim()
+        if (goal.isEmpty()) {
+            Toast.makeText(activity, "Describe the task first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (goal.startsWith("/grill-me", ignoreCase = true)) {
+            Toast.makeText(activity, "Interviews are interactive — run them here", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (recorder.state == SkillRecorder.State.RECORDING) {
+            Toast.makeText(activity, "Recording in progress — stop & save first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val listener = launchBackground ?: return
+        listener(goal)
+        log("🛰 Task handed to the background engine — watch the notification bar")
+        Toast.makeText(activity, "Running in background — progress is in the notification bar", Toast.LENGTH_LONG).show()
+    }
+
+    /** Live mirror of BackgroundAgentStore for the in-app monitor card. */
+    private val bgStoreListener = { rec: com.cometx.browser.background.BackgroundAgentStore.TaskRecord? ->
+        activity.runOnUiThread {
+            renderBackgroundCard(rec)
+        }
+    }
+
+    private fun renderBackgroundCard(rec: com.cometx.browser.background.BackgroundAgentStore.TaskRecord?) {
+        val active = rec != null && rec.isActive
+        backgroundCard.visibility = if (active) View.VISIBLE else View.GONE
+        if (active && rec != null) {
+            backgroundStatus.text = com.cometx.browser.background.AgentNotifications.statusLine(rec)
+            refreshButtons()
+        }
+        // terminal transition (only once per change): mirror it into the log
+        val newState = rec?.state
+        if (newState != lastBgState) {
+            val was = lastBgState
+            lastBgState = newState
+            if (!active && rec != null && com.cometx.browser.background.BackgroundAgentStore.ACTIVE_STATES.contains(was)) {
+                when (newState) {
+                    com.cometx.browser.background.BackgroundAgentStore.STATE_COMPLETED -> log("✓ Background task complete — ${rec.detail.take(80)}")
+                    com.cometx.browser.background.BackgroundAgentStore.STATE_FAILED -> log("✗ Background task failed — ${rec.detail.take(80)}", isError = true)
+                    com.cometx.browser.background.BackgroundAgentStore.STATE_CANCELLED -> log("■ Background task stopped")
+                    com.cometx.browser.background.BackgroundAgentStore.STATE_INTERRUPTED -> log("⚠ Background task interrupted — re-run it when ready", isError = true)
+                }
+            }
+            if (active) refreshButtons()
+        }
+    }
+
     private fun runFromInput() {
         val goal = goalInput.text.toString().trim()
         if (goal.isEmpty()) {
@@ -621,6 +696,13 @@ class AgentPanelController(
             ?.setIconResource(if (recording) R.drawable.ic_stop else R.drawable.ic_record)
         btnRecord.visibility = if (running || paused) View.GONE else View.VISIBLE
         btnGrillMe.visibility = if (running || paused) View.GONE else View.VISIBLE
+        // v1.8.0: background launch shares Run's visibility matrix, but hides
+        // while a background task is already active (one at a time — BG-2)
+        val bgActive = runCatching {
+            com.cometx.browser.CometApp.app.agentStore.current?.isActive == true
+        }.getOrDefault(false)
+        btnRunBackground.visibility = if ((running || paused || bgActive)) View.GONE else View.VISIBLE
+        btnRunBackground.isEnabled = !bgActive
         if (recording) {
             askBarText.text = "⏺ REC — using the browser records a skill · tap to open"
             askBarText.setTextColor(activity.getColor(R.color.danger))

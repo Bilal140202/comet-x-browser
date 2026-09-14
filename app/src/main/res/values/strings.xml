@@ -28,6 +28,9 @@
     <string name="goal_hint">Describe the task, e.g. find the cheapest hotel in Ahmedabad for Friday</string>
     <string name="user_skills_caption">YOUR SKILLS · TAP TO RUN, LONG-PRESS FOR MORE</string>
     <string name="run_agent">Run Agent</string>
+    <string name="run_background">🛰 Run in background — watch the notification bar</string>
+    <string name="bg_card_title">🛰 Running in background</string>
+    <string name="bg_card_stop">Stop background task</string>
     <string name="record">Record</string>
     <string name="grill_me">/grill-me</string>
     <string name="stop">Stop</string>

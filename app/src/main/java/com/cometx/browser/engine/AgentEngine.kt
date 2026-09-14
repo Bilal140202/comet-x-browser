@@ -73,6 +73,25 @@ class AgentEngine(
     private var job: Job? = null
     private var listener: Listener? = null
 
+    /**
+     * v1.8.0 background mode ONLY: optional network-fluctuation gate.
+     * When set (by AgentTaskService), a failed model step (phase
+     * "model-call", with the exception) or an unreadable page (phase
+     * "page-unreadable", error null) is offered to the gate. Returning true
+     * means "waited, connectivity is back — retry this step"; the loop
+     * continues without counting a failure. Returning false (or leaving the
+     * hook null, which is every UI path) preserves byte-identical v1.6.x
+     * behavior.
+     */
+    @Volatile var networkWaitGate: (suspend (phase: String, error: Exception?) -> Boolean)? = null
+
+    /**
+     * Hard cap on human gates (pause/confirm/ask). Default unchanged from
+     * v1.4.0 (15 min); the background service extends it — notification
+     * replies can legitimately arrive much later.
+     */
+    var gateTimeoutMs: Long = 15L * 60 * 1000
+
     // pending gates — resume/confirm may arrive BEFORE the engine reaches the
     // gate (UI thread vs engine coroutine), so arrivals are recorded and
     // consumed order-independently (red-team fix: race condition elimination)
@@ -228,6 +247,12 @@ class AgentEngine(
                 if (obs == null) {
                     // Loading retries are refunded: they are not decisions.
                     budget.refund()
+                    // v1.8.0 background gate: park while offline instead of
+                    // burning toward the loading-loop failure (UI paths: null).
+                    if (networkWaitGate?.invoke("page-unreadable", null) == true) {
+                        listener?.onLog("⋯ Network lost — waiting to continue")
+                        continue
+                    }
                     loadingStreak++
                     if (loadingStreak >= 6) {
                         fail("page never became readable (loading loop)")
@@ -356,6 +381,13 @@ class AgentEngine(
                     listener?.onLog("👁 Model cannot read images — continuing with DOM/accessibility perception", isError = true)
                     continue
                 } catch (e: Exception) {
+                    // v1.8.0 background gate: a network fluctuation parks the
+                    // step (budget refunded) instead of failing the run.
+                    if (networkWaitGate?.invoke("model-call", e) == true) {
+                        budget.refund()
+                        listener?.onLog("⋯ Network lost mid-task — waiting to continue")
+                        continue
+                    }
                     listener?.onLog("Model error: ${e.message}", isError = true)
                     fail("model call failed: ${e.message}")
                     return
@@ -548,8 +580,8 @@ class AgentEngine(
                 pendingUserAnswer = null
             }
         }
-        val answer = kotlinx.coroutines.withTimeoutOrNull(PAUSE_TIMEOUT_MS) { d!!.await() }
-        if (d?.isCompleted != true) fail("paused too long (over ${PAUSE_TIMEOUT_MS / 60000} min) — agent stopped")
+        val answer = kotlinx.coroutines.withTimeoutOrNull(gateTimeoutMs) { d!!.await() }
+        if (d?.isCompleted != true) fail("paused too long (over ${gateTimeoutMs / 60000} min) — agent stopped")
         userResumeDeferred = null
         return answer
     }
@@ -572,14 +604,9 @@ class AgentEngine(
                 pendingConfirmDecision = null
             }
         }
-        val approved = kotlinx.coroutines.withTimeoutOrNull(PAUSE_TIMEOUT_MS) { d!!.await() }
+        val approved = kotlinx.coroutines.withTimeoutOrNull(gateTimeoutMs) { d!!.await() }
         confirmDeferred = null
         return approved
-    }
-
-    private companion object {
-        /** Hard cap on human gates so the engine can never hang forever. */
-        const val PAUSE_TIMEOUT_MS = 15L * 60 * 1000
     }
 
     private fun setState(s: State, msg: String) {
