@@ -117,17 +117,26 @@ class ModelRouter(
      * on "prefer on-device AI", PREPENDED (local-first, privacy mode). When no
      * local model is downloaded — or the native runtime is unavailable — the
      * chain is byte-identical to pre-1.6.0 behavior.
+     *
+     * v2.1.0: the in-browser Transformers.js provider joins the SAME additive
+     * group, ranked AFTER native llama.cpp (native ARM code beats WASM). With
+     * no web model selected the chain is byte-identical to v2.0.0.
      */
     fun chain(): List<LlmProvider> {
         val byId = providers.values.associateBy { it.id }
         val configured = settings.liveChain().mapNotNull { byId[it] }.filter { it.isReady() }
         val remote = if (configured.isNotEmpty()) configured
         else providers.values.filter {
-            it.isReady() && it.id !in SettingsRepository.ALL_PROVIDERS && it.id != SettingsRepository.LOCAL_PROVIDER_ID
+            it.isReady() && it.id !in SettingsRepository.ALL_PROVIDERS &&
+                it.id != SettingsRepository.LOCAL_PROVIDER_ID &&
+                it.id != SettingsRepository.WEB_PROVIDER_ID
         }
-        val local = byId[SettingsRepository.LOCAL_PROVIDER_ID]?.takeIf { it.isReady() }
-            ?: return remote
-        return if (settings.localAiPreferred()) listOf(local) + remote else remote + listOf(local)
+        val onDevice = listOfNotNull(
+            byId[SettingsRepository.LOCAL_PROVIDER_ID]?.takeIf { it.isReady() },
+            byId[SettingsRepository.WEB_PROVIDER_ID]?.takeIf { it.isReady() },
+        )
+        if (onDevice.isEmpty()) return remote
+        return if (settings.localAiPreferred()) onDevice + remote else remote + onDevice
     }
 
     // -------------------------------------------------------------- resolution

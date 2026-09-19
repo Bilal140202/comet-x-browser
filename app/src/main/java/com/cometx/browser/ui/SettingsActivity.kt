@@ -147,6 +147,9 @@ class SettingsActivity : AppCompatActivity() {
         header("On-device AI (beta)")
         addLocalAi()
 
+        header("In-browser AI (Transformers.js)")
+        addWebAi()
+
         header("Agent behavior")
         addNumberField("Max steps per task (4–60)", settings.maxSteps()) { settings.setMaxSteps(it) }
         body("The agent auto-extends this budget a little while a task is visibly progressing (up to 3 extensions, never above 60) and stops thrashing runs instead of funding them.")
@@ -785,6 +788,161 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private val lastLocalStates = mutableMapOf<String, Boolean>() // modelId → was terminal (Done/Idle)
+
+    // ---------------------------------------------------------------- in-browser AI (v2.1.0)
+
+    private val webStatusLabels = mutableMapOf<String, TextView>()
+    private var webRefreshTick: Runnable? = null
+
+    private fun addWebAi() {
+        val web = CometApp.app.webAI
+        val ramGb = runCatching {
+            val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+            val mi = android.app.ActivityManager.MemoryInfo()
+            am.getMemoryInfo(mi)
+            (mi.totalMem / (1024L * 1024L * 1024L)).toInt()
+        }.getOrDefault(0)
+
+        body("Run the agent on transformer models inside Comet-X's own browser engine " +
+            "(Transformers.js + WebAssembly) — no API key, nothing leaves the device. " +
+            "The model is fetched once from Hugging Face into the browser's cache; afterwards it runs offline. " +
+            "Slower than native on-device AI: pick this for model choice, pick llama.cpp for speed. Text-only.")
+
+        val selLabel = web.selectedModel()?.let { "${it.label} (${it.sizeMb} MB)" } ?: "none"
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = getDrawable(com.cometx.browser.R.drawable.bg_card)
+        }
+        card.addView(TextView(this).apply {
+            text = "This device: ~$ramGb GB RAM · Selected: $selLabel · " +
+                "Chain position: ${if (settings.localAiPreferred()) "on-device FIRST" else "cloud first, in-browser last-resort"}"
+            textSize = 12f
+            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
+        })
+        root.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(6), 0, dp(6)) })
+
+        for (m in com.cometx.browser.ai.web.WebLlmCatalog.MODELS) addWebModelCard(web, m, ramGb)
+
+        val testBtn = actionButton("Test selected model", Tonal.TONAL)
+        val freeBtn = actionButton("Free runtime memory", Tonal.TEXT)
+        row(testBtn, freeBtn)
+        testBtn.setOnClickListener { runWebModelTest(web) }
+        freeBtn.setOnClickListener {
+            web.releaseMemory()
+            toast("In-browser runtime released (model stays cached)")
+            buildUi()
+        }
+
+        // live status refresh while this screen is visible (load progress etc.)
+        webRefreshTick = object : Runnable {
+            override fun run() {
+                refreshWebStatuses(web)
+                webRefreshTick?.let { android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(it, 800) }
+            }
+        }
+        webRefreshTick?.run()
+    }
+
+    private fun addWebModelCard(
+        web: com.cometx.browser.ai.web.WebLlmManager,
+        m: com.cometx.browser.ai.web.WebLlmCatalog.WebModel,
+        deviceRamGb: Int,
+    ) {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = getDrawable(com.cometx.browser.R.drawable.bg_card)
+        }
+        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        lp.setMargins(0, dp(6), 0, dp(6))
+        root.addView(card, lp)
+
+        val titleRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        titleRow.addView(TextView(this).apply {
+            text = "${m.label} · ${m.sizeMb} MB · int4"
+            textSize = 15f
+            setTextColor(getColor(com.cometx.browser.R.color.text_primary))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        webStatusLabels[m.id] = TextView(this).apply {
+            textSize = 12f
+            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
+            gravity = android.view.Gravity.END
+        }
+        titleRow.addView(webStatusLabels[m.id], LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        card.addView(titleRow)
+
+        card.addView(TextView(this).apply {
+            val ramNote = if (deviceRamGb in 1 until m.minDeviceRamGb) "\n⚠ this device reports less than the recommended ${m.minDeviceRamGb} GB RAM" else ""
+            text = "${m.id.substringAfter('/')}\n${m.blurb}$ramNote"
+            textSize = 12f
+            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(2), 0, 0) })
+
+        val selected = settings.webModelId() == m.id
+        val primary = actionButton(if (selected) "Selected ✓" else "Use this model", if (selected) Tonal.TONAL else Tonal.FILL)
+        val clearBtn = actionButton("Clear", Tonal.TEXT)
+        if (!selected) clearBtn.isEnabled = false
+        row(primary, clearBtn)
+        primary.setOnClickListener {
+            web.select(m.id)
+            toast("${m.label} selected — the agent can now use it (first use downloads ${m.sizeMb} MB once)")
+            buildUi()
+        }
+        clearBtn.setOnClickListener {
+            web.select(null)
+            toast("In-browser AI deselected")
+            buildUi()
+        }
+
+        val p = web.progress.value
+        val status = when {
+            !selected -> "tap to select"
+            p.phase == "loading" && p.totalBytes > 0 ->
+                "${(p.loadedBytes * 100 / p.totalBytes)}% · ${(p.loadedBytes / 1048576.0).toInt()} / ${(p.totalBytes / 1048576.0).toInt()} MB"
+            p.phase == "loading" -> "loading…"
+            p.phase == "loaded" -> "cached & ready"
+            p.phase == "error" -> "✗ ${(p.message ?: "load failed").take(48)}"
+            else -> "selected"
+        }
+        webStatusLabels[m.id]?.text = status
+    }
+
+    private fun refreshWebStatuses(web: com.cometx.browser.ai.web.WebLlmManager) {
+        val selectedId = settings.webModelId()
+        val p = web.progress.value
+        for ((id, label) in webStatusLabels) {
+            if (id != selectedId) { label.text = "tap to select"; continue }
+            label.text = when {
+                p.phase == "loading" && p.totalBytes > 0 ->
+                    "${(p.loadedBytes * 100 / p.totalBytes)}% · ${(p.loadedBytes / 1048576.0).toInt()} / ${(p.totalBytes / 1048576.0).toInt()} MB"
+                p.phase == "loading" -> "loading…"
+                p.phase == "loaded" -> "cached & ready"
+                p.phase == "error" -> "✗ ${(p.message ?: "load failed").take(48)}"
+                else -> "selected"
+            }
+        }
+    }
+
+    private fun runWebModelTest(web: com.cometx.browser.ai.web.WebLlmManager) {
+        val model = web.selectedModel() ?: run { toast("Select a model first"); return }
+        toast("Loading ${model.label} — first time downloads ${model.sizeMb} MB…")
+        uiScope.launch {
+            val t0 = System.currentTimeMillis()
+            try {
+                val reply = web.provider.chat(
+                    listOf(com.cometx.browser.ai.ChatMessage("user", "Reply with exactly: OK")),
+                    model = model.id, temperature = 0.0, maxTokens = 64)
+                val ms = System.currentTimeMillis() - t0
+                toast("Test ok (${ms} ms): ${reply.take(60)}")
+                buildUi()
+            } catch (e: Exception) {
+                toast("Test failed: ${e.message?.take(120) ?: "unknown error"}")
+                buildUi()
+            }
+        }
+    }
+
 
     /**
      * v1.7.0: background downloads run behind a foreground-service notification.

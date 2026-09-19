@@ -27,7 +27,10 @@ object ProviderSet {
         ),
         // v1.6.0: on-device llama.cpp provider (app-scoped singleton so the
         // loaded model survives Settings round-trips and activity recreation)
-        SettingsRepository.LOCAL_PROVIDER_ID to CometApp.app.localAI.provider
+        SettingsRepository.LOCAL_PROVIDER_ID to CometApp.app.localAI.provider,
+        // v2.1.0: in-browser Transformers.js provider (app-scoped singleton,
+        // fully lazy — joins the chain only after a web model is selected)
+        SettingsRepository.WEB_PROVIDER_ID to CometApp.app.webAI.provider
     )
 
     /** Re-applies user-saved base URLs (expert review P1-7). */

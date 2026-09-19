@@ -391,3 +391,37 @@ re-targeted to the tab GRID (same semantics: card tap switches + omnibox syncs, 
 and the defocus-restore expectation is the v2.0.0 start-page sentinel `about:home`.
 `assembleRelease` must produce versionCode 11 / versionName 2.0.0. Cert SHA-256
 `970e0a30…` continuity maintained.
+
+---
+
+# § v2.1.0 ADDENDUM — OPERATION TRANSFORMERS (in-browser Transformers.js LLM)
+
+> Full architecture, wire contract and honest limits: `docs/ai/WEB_LLM.md`.
+> The deliverable: the SAME model zoo as the Transformers.js ecosystem, executed
+> by the browser engine the app already ships — no CDN dependency, no native
+> code added, no behavior change until the user selects a web model.
+
+## A. New behavioral contracts (do not break)
+
+| ID | Contract |
+|----|----------|
+| TW-1 | The runtime ships FULLY BUNDLED in `assets/webllm/` (transformers.min.js 4.3.0 + ort-wasm-simd-threaded.wasm/.mjs 1.31.0-dev pinned + runtime.js + index.html). No CDN may ever be required at load time; model weights are the only network fetches (Hugging Face hub, once, into Cache Storage) |
+| TW-2 | The runtime page is served ONLY from `https://appassets.androidplatform.net/assets/webllm/` via WebViewAssetLoader inside the app-owned headless WebView (`ai/web/WebLlmRuntime`). COOP/COEP headers are injected on THAT origin only — never on user-facing pages. JS on, file/content access off |
+| TW-3 | The Kotlin↔JS wire contract is pinned by `ai/web/WebLlmProtocol.kt` ↔ `assets/webllm/runtime.js` (events boot/log/status/ready/stream/done/error; commands load/generate/interrupt). Parsing is TOTAL: malformed or hostile bridge payloads parse to null and are swallowed — they can never throw into the provider |
+| TW-4 | `TransformersWebProvider` (id `webtransformers` = `SettingsRepository.WEB_PROVIDER_ID`, lockstep tested) joins the router chain like the v1.6.0 local provider: additively, ranked AFTER native llama.cpp (native ARM beats WASM), LAST when cloud exists, FIRST when "prefer on-device AI" is on. With no web model selected the chain is byte-identical to v2.0.0 |
+| TW-5 | Readiness is two-tiered and CHEAP: `isReady()` = a catalog model selected AND runtime not broken — it never creates a WebView, allocates, or touches the network. `chat()` starts the runtime on demand; a resident pipeline fast-path skips re-load |
+| TW-6 | Text-only honesty: multimodal messages are REFUSED (`MODEL_UNAVAILABLE`) so the router transparently moves to a vision-capable provider — same contract as the local provider. Prompt budget: >60 000 chars throws `ContextTooLargeException` (engine §19 compression path engages) |
+| TW-7 | Single completion at a time (provider AtomicBoolean + page-level busy flag, both tested); output cap clamped 64–512 tokens; empty output → `PROVIDER_ERROR`, never an empty string to the engine |
+| TW-8 | Catalog honesty (`WebLlmCatalog`): three verified repos (SmolLM2-360M-Instruct 387.9 MB, Qwen2.5-0.5B-Instruct 786.2 MB, Qwen2.5-1.5B-Instruct 1787.6 MB — onnx/model_q4.onnx sizes, hub-reported 2026-09-19), int4/q4 only (the dtype the WASM CPU backend executes reliably), RAM guidance shown per model, 1.5B flagged "8 GB+ device" |
+| TW-9 | Renderer loss (`onRenderProcessGone`) is consumed in place: pending boot/load/generation fail with a clear error, the provider leaves the chain (`healthy=false`) and the runtime self-heals on the next `ensureStarted()` — the app must never crash (v1.8.0 posture) |
+| TW-10 | Settings section "In-browser AI (Transformers.js)" mirrors the local-AI section: model cards with hub-reported sizes, one-tap select, honest status line (download % from real progress callbacks, "cached & ready", real error text), "Test selected model" round-trip, "Free runtime memory" releases the renderer (weights stay cached) |
+| TW-11 | Idle hygiene: after a completed generation the runtime schedules a 10-minute idle release of the renderer; any new operation cancels the schedule. Weights persist in Cache Storage across releases and process restarts |
+
+## B. Regression gate update
+
+Baseline is now **344 tests / 35 suites** (was 305/31; +4 suites: WebLlmCatalogTest,
+WebLlmProtocolTest, TransformersWebProviderTest, WebChainTest).
+`assembleRelease` must produce versionCode 12 / versionName 2.1.0. Cert SHA-256
+`970e0a30…` continuity maintained. All v2.0.0 contracts (§ PF/BLK/PRIV/FEAT/UI/BRAND)
+remain binding; the local-AI chain semantics of LocalChainTest are unchanged and now
+extended by WebChainTest.

@@ -15,6 +15,7 @@
 | Real automation | clicks (full pointer-event sequences), typing (React/Vue-safe native setters), selects, scrolling, extraction (text/links/tables), tab verbs (open/switch/close) |
 | Multi-model | Groq, OpenRouter, Hugging Face router, any OpenAI-compatible endpoint — one provider abstraction, live model discovery, capability negotiation, AUTO model selection |
 | On-device AI | llama.cpp runtime built in (arm64): download a GGUF model once (SHA-256 verified, 4-way parallel background download) and the agent runs **fully offline** — no API key, nothing leaves the phone |
+| In-browser transformer AI (v2.1.0) | the Transformers.js model zoo running inside Comet-X's own browser engine: bundled Transformers.js 4.3.0 + ONNX Runtime Web (WASM), int4 models (SmolLM2-360M / Qwen2.5-0.5B / Qwen2.5-1.5B) fetched once from Hugging Face into the browser cache, then offline — chain-ranked after llama.cpp, crash-contained, text-only |
 | Background agent mode | hand the task to an isolated headless engine and watch the **notification bar**: step counter, progress, last action; Approve/Deny high-risk actions and answer agent questions straight from the shade; network drops park the task and auto-resume; a reboot marks the task INTERRUPTED — no crash-looping, ever |
 | Human takeover | Pause / Take Control / Resume at any moment; agent re-observes your changes and continues |
 | Verification challenges | reCAPTCHA/hCaptcha/Cloudflare/MFA/rate-limit detection → pause → **you** solve it → resume (no circumvention, ever) |
@@ -48,7 +49,7 @@
 ## Quick start
 
 1. Install the APK (release artifact or `./gradlew assembleDebug`).
-2. Open **Settings → AI Provider**, paste an API key, press **Test & Enable**. That's it: Comet-X discovers the provider's live model catalog, checks what each model supports (JSON / tools / vision), picks the best agent-compatible model automatically (**AUTO**) and is ready. Prefer zero keys? **Settings → On-device AI** downloads a GGUF model (background, resumable, SHA-256 verified) and the agent runs offline.
+2. Open **Settings → AI Provider**, paste an API key, press **Test & Enable**. That's it: Comet-X discovers the provider's live model catalog, checks what each model supports (JSON / tools / vision), picks the best agent-compatible model automatically (**AUTO**) and is ready. Prefer zero keys? **Settings → On-device AI** downloads a GGUF model (background, resumable, SHA-256 verified) and the agent runs offline. Want the Transformers.js model zoo instead? **Settings → In-browser AI (Transformers.js)** — pick a model, the browser engine runs it in WebAssembly.
 3. Browse somewhere, tap **Ask Agent**, describe the task ("find the cheapest hotel in Ahmedabad for Friday") — or tap **🛰 Run in background** and watch the notification bar while the isolated engine does the clicking for you.
 4. Blocking is on from your first page load. **Menu → Blocked on this page** shows the running counts; exempt sites from the same dialog or from Settings.
 
@@ -60,6 +61,7 @@ Build details: [docs/development/BUILD.md](docs/development/BUILD.md).
 - In-stream video ads (including YouTube's) are served from the same endpoints as the video itself, so network-level removal is impossible on WebView — the client-side suppression layer (prune-before-load + auto-skip + scoped fallback) is the same technique maintained scriptlet blockers use, and it is an arms race.
 - Incognito shares the WebView cookie jar with normal tabs; history, bookmarks, previews and session persistence are skipped.
 - DNT/GPC headers apply to main-frame requests; WebView does not expose per-subresource header injection.
+- Vision is not served by the in-browser transformer engine (text-only models); multimodal steps transparently route to a vision-capable provider.
 - The agent never circulates CAPTCHAs and never touches your keys; high-risk actions always stop for a human.
 
 ## Security posture (unchanged since v1.0)

@@ -25,8 +25,16 @@ echo "Scanning $TARGET for secrets..."
 for p in "${PATTERNS[@]}"; do
   # -I: skip binaries. Test sources are allowlisted: they legitimately contain
   # FAKE key-shaped fixtures for detector tests (marked FAKE in the file).
+  # Vendored third-party artifacts are allowlisted with rationale (v2.1.0):
+  #  - assets/blocklists/* — third-party blocklist CONTENT (blocked domains can
+  #    literally contain key-shaped strings, e.g. the "sk-pnxproxy-prd-*" host)
+  #  - assets/webllm/* — upstream Transformers.js/ORT-WASM library files whose
+  #    tokenizer tables contain special-token literals (token="<|image_pad|>")
+  #  - readability.js, yt-block.js — same class: upstream library content
   MATCHES=$(grep -rIl -E "$p" "$TARGET" --exclude-dir=.git --exclude-dir=build --exclude-dir=.gradle --exclude-dir=.cxx \
-    --exclude="secret_scan.sh" --exclude="*.md" --exclude="*Test.kt" 2>/dev/null || true)
+    --exclude="secret_scan.sh" --exclude="*.md" --exclude="*Test.kt" \
+    --exclude-dir="blocklists" --exclude-dir="webllm" \
+    --exclude="readability.js" --exclude="yt-block.js" 2>/dev/null || true)
   if [ -n "$MATCHES" ]; then
     echo "SECRET PATTERN HIT [$p]:"
     echo "$MATCHES"

@@ -26,6 +26,10 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
         /** v1.6.0: the on-device llama.cpp provider lives OUTSIDE ALL_PROVIDERS —
          *  it is never key-configured; it is ready when a model file is downloaded. */
         const val LOCAL_PROVIDER_ID = "local"
+
+        /** v2.1.0: the in-browser Transformers.js provider — also outside
+         *  ALL_PROVIDERS; ready when a web model is selected in Settings. */
+        const val WEB_PROVIDER_ID = "webtransformers"
     }
 
     // ---------- Providers ----------
@@ -196,6 +200,10 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
     /** Last activated local model id (catalog id or "imported:<file>"). */
     fun localModelId(): String? = prefs.getString("local_model_id", null)
     fun setLocalModelId(id: String?) = prefs.edit().putString("local_model_id", id).apply()
+
+    /** v2.1.0: selected in-browser transformer model (HF repo id), or null. */
+    fun webModelId(): String? = prefs.getString("web_model_id", null)
+    fun setWebModelId(id: String?) = prefs.edit().putString("web_model_id", id?.takeIf { it.isNotBlank() }).apply()
 
     /** Runtime context window for the local model (clamped at use to ≤4096). */
     fun localContext(): Int = prefs.getInt("local_context", 4096)

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.appcompat.app.AppCompatDelegate
 import com.cometx.browser.ai.SettingsRepository
 import com.cometx.browser.ai.local.LocalModelManager
+import com.cometx.browser.ai.web.WebLlmManager
 import com.cometx.browser.background.BackgroundAgentStore
 import com.cometx.browser.browse.AdBlocker
 import com.cometx.browser.browse.CosmeticFilter
@@ -12,6 +13,10 @@ import java.io.File
 
 class CometApp : Application() {
     lateinit var localAI: LocalModelManager
+        private set
+
+    /** v2.1.0: in-browser Transformers.js stack (runtime + provider). */
+    lateinit var webAI: WebLlmManager
         private set
 
     /** v1.8.0: single source of truth for the background agent task. */
@@ -43,6 +48,10 @@ class CometApp : Application() {
         // v1.7.0: surface downloads that are queued in WorkManager's persistent
         // queue (process death / reboot while a background download was active)
         localAI.reconcileQueuedWork()
+        // v2.1.0: in-browser Transformers.js AI — fully lazy (no WebView, no
+        // memory, no traffic until the user selects a web model in Settings);
+        // the provider joins the router chain additively only when selected.
+        webAI = WebLlmManager(this)
         // v1.8.0: background agent store — reconcile a task orphaned by a
         // reboot or a system kill into INTERRUPTED (no receiver runs at boot,
         // nothing auto-resumes, nothing can crash-loop)
