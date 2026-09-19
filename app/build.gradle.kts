@@ -40,8 +40,8 @@ android {
         applicationId = "com.cometx.browser"
         minSdk = 26
         targetSdk = 34
-        versionCode = 12
-        versionName = "2.1.0"
+        versionCode = 13
+        versionName = "2.2.0"
 
         // v1.6.0 on-device AI: llama.cpp runtime is built from source (pinned,
         // hash-verified) for arm64 only — the architecture of every real phone

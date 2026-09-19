@@ -418,6 +418,38 @@ class OpenRouterProvider(
     }
 }
 
+/**
+ * NVIDIA NIM (build.nvidia.com) — OpenAI-compatible inference catalog.
+ * Verified live in v2.2.0: GET /v1/models and POST /v1/chat/completions
+ * (model "openai/gpt-oss-20b") both succeed with an nvapi-… key.
+ * Note: NVIDIA's catalog retires model ids over time — discovery is live
+ * (FETCH MODELS), so users always see what THEIR account can actually run.
+ * A retired id surfaces as HTTP 404 "Function … not found" (verified).
+ */
+class NvidiaProvider(
+    keyProvider: () -> String?,
+    transport: HttpTransport = HttpTransport.REAL
+) : OpenAICompatibleProvider(
+    id = "nvidia",
+    displayName = "NVIDIA NIM",
+    defaultBaseUrl = "https://integrate.api.nvidia.com/v1",
+    keyProvider = keyProvider,
+    readyCheck = null,
+    transport = transport
+) {
+    /** NVIDIA flavor: reasoning-family hints from model ids. */
+    override fun normalizeOne(o: JSONObject): ModelInfo {
+        val info = super.normalizeOne(o)
+        val lower = info.id.lowercase()
+        if (lower.contains("deepseek-r1") || lower.contains("-r1-") ||
+            lower.contains("gpt-oss") || lower.contains("qwen3")
+        ) {
+            return info.copy(capabilities = info.capabilities + Capability.REASONING)
+        }
+        return info
+    }
+}
+
 class HuggingFaceProvider(
     keyProvider: () -> String?,
     transport: HttpTransport = HttpTransport.REAL

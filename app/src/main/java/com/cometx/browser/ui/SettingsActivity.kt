@@ -14,15 +14,19 @@ import com.cometx.browser.ai.ConnectionDiagnostics
 import com.cometx.browser.ai.CustomOpenAIProvider
 import com.cometx.browser.ai.GroqProvider
 import com.cometx.browser.ai.HuggingFaceProvider
+import com.cometx.browser.ai.HttpTransport
 import com.cometx.browser.ai.ModelCatalog
 import com.cometx.browser.ai.ModelRanker
 import com.cometx.browser.ai.ModelRouter
+import com.cometx.browser.ai.NvidiaProvider
 import com.cometx.browser.ai.OpenAICompatibleProvider
 import com.cometx.browser.ai.OpenRouterProvider
 import com.cometx.browser.ai.ProviderException
 import com.cometx.browser.ai.SettingsRepository
 import com.cometx.browser.ai.UrlNormalizer
 import com.cometx.browser.CometApp
+import com.cometx.browser.background.DiscordNotifier
+import com.cometx.browser.util.Http
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
@@ -70,12 +74,14 @@ class SettingsActivity : AppCompatActivity() {
     private val providerNames = mapOf(
         "groq" to "Groq",
         "openrouter" to "OpenRouter",
+        "nvidia" to "NVIDIA NIM",
         "huggingface" to "Hugging Face",
         "custom" to "Self-run (OpenAI-compatible)"
     )
     private val providerTags = mapOf(
         "groq" to "fastest inference · free tier · key is enough",
         "openrouter" to "one key · free models used automatically",
+        "nvidia" to "build.nvidia.com · free developer credits · key is enough",
         "huggingface" to "inference router · free quota · key is enough",
         "custom" to "Ollama · LM Studio · vLLM · any /v1 endpoint"
     )
@@ -102,6 +108,7 @@ class SettingsActivity : AppCompatActivity() {
         mapOf(
             "groq" to GroqProvider(keyProvider = { settings.apiKey("groq") }),
             "openrouter" to OpenRouterProvider(keyProvider = { settings.apiKey("openrouter") }),
+            "nvidia" to NvidiaProvider(keyProvider = { settings.apiKey("nvidia") }),
             "huggingface" to HuggingFaceProvider(keyProvider = { settings.apiKey("huggingface") }),
             "custom" to CustomOpenAIProvider(
                 keyProvider = { settings.apiKey("custom") },
@@ -149,6 +156,9 @@ class SettingsActivity : AppCompatActivity() {
 
         header("In-browser AI (Transformers.js)")
         addWebAi()
+
+        header("Discord agent monitor")
+        addDiscordMonitor()
 
         header("Agent behavior")
         addNumberField("Max steps per task (4–60)", settings.maxSteps()) { settings.setMaxSteps(it) }
@@ -205,6 +215,73 @@ class SettingsActivity : AppCompatActivity() {
                 .setMessage("User memory, recent tasks and browser state will be deleted.")
                 .setPositiveButton("Clear") { _, _ -> memory.clearAll(); buildUi() }
                 .setNegativeButton("Cancel", null).show()
+        }
+    }
+
+    // -------------------------------------------------------- discord monitor
+
+    /**
+     * v2.2.0 ADDITIVE: paste a Discord bot token + channel id; background
+     * agent tasks then mirror their updates into that channel (any device
+     * with Discord becomes a task monitor). The token is Keystore-encrypted;
+     * the Test button posts a REAL message through the real Discord API —
+     * the only honest verification.
+     */
+    private fun addDiscordMonitor() {
+        body("Mirror background-agent task updates (start, step milestones, approval gates, result) into a Discord channel, " +
+            "so you can watch a task from any device. One-time setup: discord.com/developers → New Application → Bot → " +
+            "copy the token; invite the bot to your server with Send Messages permission; enable Developer Mode " +
+            "(Discord settings → Advanced), then right-click the target channel → Copy Channel ID. " +
+            "The token is encrypted with the Android Keystore and is sent ONLY to discord.com.")
+        addTextField("Bot token", settings.discordBotToken(), isPassword = true) { settings.setDiscordBotToken(it) }
+        addTextField("Channel ID", settings.discordChannelId()) { settings.setDiscordChannelId(it) }
+        addCheck("Mirror agent task updates to Discord", settings.discordEnabled()) { settings.setDiscordEnabled(it) }
+
+        val status = TextView(this).apply {
+            textSize = 12f
+            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
+        }
+        val testBtn = actionButton("Send test message", Tonal.TONAL)
+        root.addView(testBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { setMargins(0, dp(4), 0, dp(4)) })
+        root.addView(status)
+        testBtn.setOnClickListener {
+            val token = settings.discordBotToken().orEmpty().trim()
+            val channel = settings.discordChannelId().orEmpty().trim()
+            if (token.isBlank() || channel.isBlank()) {
+                status.text = "✗ Paste the bot token and the channel ID first"
+                return@setOnClickListener
+            }
+            testBtn.isEnabled = false
+            status.text = "sending…"
+            uiScope.launch {
+                var errorText: String? = null
+                var resp: Http.Response? = null
+                try {
+                    resp = DiscordNotifier.post(
+                        HttpTransport.REAL,
+                        DiscordNotifier.Config(enabled = true, botToken = token, channelId = channel),
+                        DiscordNotifier.buildBody(
+                            DiscordNotifier.Event.TEST, "",
+                            "Comet-X agent monitor is connected. Background task updates will appear in this channel."
+                        )
+                    )
+                } catch (e: Exception) {
+                    errorText = "${e.javaClass.simpleName}: ${e.message?.take(120)}"
+                }
+                testBtn.isEnabled = true
+                status.text = when {
+                    errorText != null -> "✗ $errorText"
+                    resp == null -> "✗ Discord monitor not configured"
+                    resp.ok -> "✓ Message sent — check the channel, then enable the toggle above"
+                    resp.code == 401 -> "✗ HTTP 401 — token invalid (regenerate it in the Developer Portal → Bot)"
+                    resp.code == 403 -> "✗ HTTP 403 — bot lacks Send Messages permission there (re-invite it)"
+                    resp.code == 404 -> "✗ HTTP 404 — channel ID unknown (Developer Mode → right-click channel → Copy Channel ID)"
+                    resp.code == 429 -> "⚠ HTTP 429 — rate limited, try again in a few seconds"
+                    else -> "✗ HTTP ${resp.code}: ${resp.body.take(120)}"
+                }
+            }
         }
     }
 
@@ -481,6 +558,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun keyHint(id: String) = when (id) {
         "groq" -> "gsk_…  (console.groq.com/keys)"
         "openrouter" -> "sk-or-…  (openrouter.ai/keys)"
+        "nvidia" -> "nvapi-…  (build.nvidia.com → API keys)"
         "huggingface" -> "hf_…  (huggingface.co/settings/tokens)"
         else -> "optional — local servers usually need none"
     }

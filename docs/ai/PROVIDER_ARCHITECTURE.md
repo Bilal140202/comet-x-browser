@@ -1,6 +1,6 @@
 # PROVIDER ARCHITECTURE
 
-> COMET-X Phase 2 — one abstraction, four providers, zero hardcoded model IDs.
+> COMET-X Phase 2 — one abstraction, five providers (v2.2.0: + NVIDIA NIM), zero hardcoded model IDs.
 
 ## Interface map (§14)
 
@@ -9,9 +9,13 @@ LlmProvider (chat transport contract)
  └── OpenAICompatibleProvider   — one wire format, provider-specific parsing
       ├── GroqProvider          — context_window, vision/reasoning id hints
       ├── OpenRouterProvider    — pricing/parameters/modalities metadata (free-only)
+      ├── NvidiaProvider        — NVIDIA NIM (v2.2.0, live-verified; reasoning id hints)
       ├── HuggingFaceProvider   — router endpoint, conservative metadata
       └── CustomOpenAIProvider  — self-run servers (Ollama / LM Studio / vLLM …)
 ```
+
+Verification record + BYOK placement + the Discord agent monitor:
+`docs/ai/CLOUD_PROVIDERS.md`.
 
 Supporting collaborators:
 
@@ -32,7 +36,7 @@ Provider-specific behavior is confined to:
 - `normalizeOne()` — catalog JSON → `ModelInfo`
 - endpoint + auth headers
 - nothing else. The negotiation ladder, ranking, interpretation, and recovery
-  are provider-independent, so Groq / OpenRouter / HF / self-run behave
+  are provider-independent, so Groq / OpenRouter / NVIDIA / HF / self-run behave
   identically from the engine's point of view (§38).
 
 ## AUTO vs MANUAL (§12/§13)

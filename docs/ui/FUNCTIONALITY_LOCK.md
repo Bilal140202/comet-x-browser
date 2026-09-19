@@ -425,3 +425,33 @@ WebLlmProtocolTest, TransformersWebProviderTest, WebChainTest).
 `970e0a30…` continuity maintained. All v2.0.0 contracts (§ PF/BLK/PRIV/FEAT/UI/BRAND)
 remain binding; the local-AI chain semantics of LocalChainTest are unchanged and now
 extended by WebChainTest.
+
+# § v2.2.0 ADDENDUM — BYOK CLOUD VERIFICATION + DISCORD AGENT MONITOR
+
+> Task: user supplied four API keys (NVIDIA NIM, OpenRouter, Discord bot,
+> one unidentified) and asked: identify them, test them for real, then build
+> the placement for users to paste their own. Every preset shipped here was
+> verified with a REAL round-trip before release (see docs/ai/CLOUD_PROVIDERS.md).
+
+## A. New behavioral contracts (do not break)
+
+| ID | Contract |
+|----|----------|
+| NV-1 | `NvidiaProvider` (id `nvidia`, `SettingsRepository.ALL_PROVIDERS` position 3) targets the live-verified endpoint `https://integrate.api.nvidia.com/v1` (GET /models + POST /chat/completions verified 200 with a real nvapi-… key). Key shape `nvapi-…` is surfaced in the settings hint (build.nvidia.com → API keys) |
+| NV-2 | NVIDIA catalog discovery is LIVE: the provider never hardcodes model ids beyond tests, because NVIDIA retires catalog entries (verified: a retired id answers 404 "Function … not found", which must surface as `ProviderException(httpCode=404)` — the chain then fails over normally). Reasoning-family ids (deepseek-r1 / gpt-oss / qwen3) gain the REASONING capability hint |
+| NV-3 | Chain adoption is fully additive: old stored `chain_order` values are auto-extended with `nvidia` (existing chainOrder() append rule); `providerEnabled("nvidia")` defaults to false, so v2.1.0 chains are byte-identical until the user tests & enables the provider |
+| DM-1 | The Discord agent monitor is OFF by default and unconfigured: with `discord_enabled=false`, an empty token, or an empty channel id, `DiscordNotifier` performs NO network call and every v2.1.0 path (service, notifications, engine) runs byte-identically |
+| DM-2 | The bot token is a SECRET: stored ONLY through SecureStore (Keystore AES-256/GCM, same vault as provider keys, key `discord_bot_token`); the channel id lives in plain prefs (not a secret). Tokens are never logged, never embedded in messages, never sent anywhere except `https://discord.com/api/v10` |
+| DM-3 | Mirror messages are plain markdown `content` (no embeds), built by pure `DiscordNotifier.buildBody` (unit-tested), capped at 1800 chars (Discord's limit is 2000), endpoint pinned to `POST /channels/{channelId}/messages` with `Authorization: Bot <token>` |
+| DM-4 | Mirror events: task STARTED, milestone STEP progress (every 5th step and the final step — never per-step spam), gates (awaiting confirm / ask_user / challenge) and exactly ONE final event (completed / failed / stopped) deduplicated by `finalMirrored` so `stopTask` and the engine callback can never double-post |
+| DM-5 | Fire-and-forget honesty: a Discord outage, rate limit or invalid token is logged and dropped — it can never delay, fail or alter a task, a notification, or the service. Posts run on Dispatchers.IO with a 15 s timeout and a ≥2.5 s throttle (forced events bypass the throttle, never the config gate) |
+| DM-6 | Settings section "Discord agent monitor" provides bot token (password field) + channel ID + enable toggle + "Send test message" which performs a REAL post and renders the honest outcome per HTTP status (401 invalid token / 403 missing permission / 404 unknown channel / 429 rate limit) |
+
+## B. Regression gate update
+
+Baseline is now **360 tests / 37 suites** (was 344/35; +2 suites: NvidiaProviderTest 7,
+DiscordNotifierTest 9 — final counts recorded at release build time).
+`assembleRelease` must produce versionCode 13 / versionName 2.2.0. Cert SHA-256
+`970e0a30…` continuity maintained. All v2.0.0/v2.1.0 contracts (§ PF/BLK/PRIV/FEAT/UI/BRAND/TW)
+remain binding; LocalChainTest / WebChainTest chain semantics are unchanged
+(nvidia joins the cloud group only when the user enables and keys it).

@@ -21,7 +21,11 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
         context.getSharedPreferences("cometx_settings", Context.MODE_PRIVATE)
 
     companion object {
-        val ALL_PROVIDERS = listOf("groq", "openrouter", "huggingface", "custom")
+        // v2.2.0: "nvidia" (NVIDIA NIM, build.nvidia.com) appended to the cloud
+        // set — verified live with a real nvapi-… key (models + completion).
+        // Stored chain orders from older installs are auto-extended by
+        // chainOrder() (missing ids are appended), nothing destructive.
+        val ALL_PROVIDERS = listOf("groq", "openrouter", "nvidia", "huggingface", "custom")
 
         /** v1.6.0: the on-device llama.cpp provider lives OUTSIDE ALL_PROVIDERS —
          *  it is never key-configured; it is ready when a model file is downloaded. */
@@ -40,13 +44,15 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
     fun providerEnabled(id: String): Boolean =
         prefs.getBoolean("prov_enabled_$id", id == "groq" || id == "openrouter")
 
+
     fun setProviderEnabled(id: String, enabled: Boolean) =
         prefs.edit().putBoolean("prov_enabled_$id", enabled).apply()
 
     // ---------- Fallback chain (user-ordered priority) ----------
 
     fun chainOrder(): List<String> {
-        val raw = prefs.getString("chain_order", null) ?: return listOf("groq", "openrouter", "huggingface", "custom")
+        val raw = prefs.getString("chain_order", null)
+            ?: return listOf("groq", "openrouter", "nvidia", "huggingface", "custom")
         return try {
             val arr = JSONArray(raw)
             val ids = (0 until arr.length()).mapNotNull { i ->
@@ -55,7 +61,7 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
             // append any provider missing from stored order
             ids + (ALL_PROVIDERS.filter { it !in ids })
         } catch (_: Exception) {
-            listOf("groq", "openrouter", "huggingface", "custom")
+            listOf("groq", "openrouter", "nvidia", "huggingface", "custom")
         }
     }
 
@@ -99,6 +105,26 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
     fun baseUrl(id: String): String? = prefs.getString("baseurl_$id", null)
     fun setBaseUrl(id: String, url: String?) =
         prefs.edit().putString("baseurl_$id", url?.takeIf { it.isNotBlank() }).apply()
+
+    // ---------- Discord agent monitor (v2.2.0) ----------
+
+    /** ADDITIVE: mirrors background-agent task events to a Discord channel.
+     *  Disabled by default → v2.1.0 behavior unchanged. */
+    fun discordEnabled(): Boolean = prefs.getBoolean("discord_enabled", false)
+    fun setDiscordEnabled(v: Boolean) = prefs.edit().putBoolean("discord_enabled", v).apply()
+
+    /** Not a secret (channel ids are not sensitive alone) — plain prefs. */
+    fun discordChannelId(): String? =
+        prefs.getString("discord_channel_id", null)?.takeIf { it.isNotBlank() }
+    fun setDiscordChannelId(v: String?) =
+        prefs.edit().putString("discord_channel_id", v?.trim()?.takeIf { it.isNotBlank() }).apply()
+
+    /** SECRET — Keystore-encrypted via SecureStore, same as provider keys. */
+    open fun discordBotToken(): String? = secure.getString("discord_bot_token")
+    fun setDiscordBotToken(v: String) {
+        val t = v.trim()
+        if (t.isBlank()) secure.remove("discord_bot_token") else secure.putString("discord_bot_token", t)
+    }
 
     // ---------- Model routing ----------
 
