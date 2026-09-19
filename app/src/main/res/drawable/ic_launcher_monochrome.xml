@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Comet-X v2.0.0 themed (monochrome) icon: single-color comet mark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M68,46 C54,60 40,74 22,86 C21,87 22,89 24,88 C43,78 58,64 72,50 Z M70,43 C58,55 46,67 30,79 C28,80 29,82 31,81 C47,71 61,58 73,47 Z M74,31 a9,9 0 1,0 0,18 a9,9 0 1,0 0,-18 Z" />
+</vector>

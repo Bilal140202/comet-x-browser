@@ -4,7 +4,6 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.ListView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import com.cometx.browser.ui.MainActivity
@@ -130,8 +129,8 @@ class TabAndOmniboxTest {
             bar.requestFocus()
             bar.setText("garbage the user typed")
             bar.clearFocus()
-            // first tab opened the default homepage; tab.url reflects it
-            assertEquals("https://www.google.com", bar.text.toString())
+            // first tab opens the v2.0.0 Comet Start page; tab.url is the sentinel
+            assertEquals("about:home", bar.text.toString())
         }
     }
 
@@ -187,9 +186,9 @@ class TabAndOmniboxTest {
         assertEquals("", UserInput.resolve("   "))
     }
 
-    // ------------------------------------------------------- Sheet wiring
+    // --------------------------------------- Sheet wiring (v2.0.0: Material tab grid)
 
-    @Test fun `tab sheet row click switches to that tab and syncs the omnibox`() {
+    @Test fun `tab grid row click switches to that tab and syncs the omnibox`() {
         ActivityScenario.launch(MainActivity::class.java).onActivity { activity ->
             // second tab with a distinct URL (public entry point, same one the
             // agent's open-tab verb and external links use)
@@ -198,24 +197,29 @@ class TabAndOmniboxTest {
             val bar = activity.findViewById<EditText>(R.id.urlBar)
             assertEquals("https://b.example/", bar.text.toString())
 
-            // open the tab sheet
+            // open the tab switcher (v2.0.0 grid overlay; kept showTabDialog name)
             activity.findViewById<View>(R.id.btnTabs).performClick()
             shadowOf(android.os.Looper.getMainLooper()).idle()
-            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
-            val list = dialog!!.findViewById<ListView>(R.id.tabList)!!
-            assertEquals(2, list.adapter.count)
+            assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.tabSwitcher).visibility)
 
-            // tap the FIRST row (the v1.6.1 handler lives on the row itself)
-            list.adapter.getView(0, null, list).performClick()
+            val grid = activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.tabsGrid)
+            assertEquals(2, grid.adapter!!.itemCount)
+
+            // bind card 0 (the start-page tab) and tap the CARD (the v1.6.1
+            // row-level click contract lives on the card root)
+            val vh = grid.adapter!!.onCreateViewHolder(grid, 0)
+            grid.adapter!!.onBindViewHolder(vh, 0)
+            vh.itemView.performClick()
             shadowOf(android.os.Looper.getMainLooper()).idle()
-            assertEquals("https://www.google.com", bar.text.toString())
+            assertEquals("about:home", bar.text.toString())
+            assertEquals(View.GONE, activity.findViewById<View>(R.id.tabSwitcher).visibility)
             // re-attach recompose completed inside a real window
             val web = activity.findViewById<FrameLayout>(R.id.webContainer)
             assertEquals(View.VISIBLE, web.getChildAt(0).visibility)
         }
     }
 
-    @Test fun `tab sheet close button closes that tab`() {
+    @Test fun `tab grid close button closes that tab`() {
         ActivityScenario.launch(MainActivity::class.java).onActivity { activity ->
             activity.openInNewTab("https://b.example/")
             shadowOf(android.os.Looper.getMainLooper()).idle()
@@ -224,15 +228,16 @@ class TabAndOmniboxTest {
 
             activity.findViewById<View>(R.id.btnTabs).performClick()
             shadowOf(android.os.Looper.getMainLooper()).idle()
-            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
-            val list = dialog!!.findViewById<ListView>(R.id.tabList)!!
+            val grid = activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.tabsGrid)
 
-            // tap the close button on row 0 (the google-homepage tab)
-            val row = list.adapter.getView(0, null, list)
-            row.findViewById<View>(R.id.btnCloseTab).performClick()
+            // tap the close button on card 0 (the start-page tab)
+            val vh = grid.adapter!!.onCreateViewHolder(grid, 0)
+            grid.adapter!!.onBindViewHolder(vh, 0)
+            vh.itemView.findViewById<View>(R.id.btnCloseTab).performClick()
             shadowOf(android.os.Looper.getMainLooper()).idle()
 
             // remaining tab is b.example and the omnibox mirrors it
+            assertEquals(1, grid.adapter!!.itemCount)
             assertEquals("https://b.example/", bar.text.toString())
         }
     }

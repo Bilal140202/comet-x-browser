@@ -12,6 +12,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.cometx.browser.util.Logx
+import java.io.ByteArrayInputStream
+import java.util.Collections
 
 /**
  * HeadlessWebViewFactory (v1.8.0) — builds the background agent's ISOLATED
@@ -29,6 +31,15 @@ import com.cometx.browser.util.Logx
  * (the platform default). Nothing in this factory may throw into the caller.
  */
 object HeadlessWebViewFactory {
+
+    /**
+     * v2.0.0: optional network blocking hook for the headless engine — when
+     * set, ad/tracker requests return an empty 404. Fewer third-party scripts
+     * mean faster agent runs and a smaller injection surface. Wire-in lives in
+     * AgentTaskService (app-scoped AdBlocker + user setting); null = no
+     * blocking (legacy behavior).
+     */
+    var networkBlock: ((String) -> Boolean)? = null
 
     /** @return a hardened, measured, headless WebView — or null if creation failed. */
     @SuppressLint("SetJavaScriptEnabled")
@@ -62,6 +73,19 @@ object HeadlessWebViewFactory {
         web.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
 
         web.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                // v2.0.0: silent network blocking for the headless engine.
+                val block = networkBlock ?: return null
+                if (!block(request.url.toString())) return null
+                return runCatching {
+                    WebResourceResponse(
+                        "text/plain", "utf-8", 404, "Blocked",
+                        Collections.emptyMap<String, String>(),
+                        ByteArrayInputStream(ByteArray(0))
+                    )
+                }.getOrNull()
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val scheme = request.url.scheme?.lowercase() ?: return false
                 // http/https drive the headless engine; every other scheme is

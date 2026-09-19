@@ -4,102 +4,72 @@
 
 > Not a chatbot wrapped around a WebView: every action the agent reports is executed against the live page through a validated, policy-gated action pipeline.
 
-## What it actually does
+**v2.0.0 — the full-browser release.** Comet-X now matches a daily-driver privacy browser feature-for-feature (native ad/tracker blocking, cosmetic filtering, YouTube ad suppression, bookmarks, history, downloads, incognito, find-in-page, reader view, translate, desktop mode, print, session restore, Material You) while keeping the agent core untouched. Built to go head-to-head with Perplexity's Comet — on your phone, with your model, blocking ads along the way.
+
+## The agent (what makes it Comet-X)
 
 | Capability | How it works |
 |---|---|
-| Real browser | Chromium WebView, tabs, popups→tabs, persistent cookies, downloads (gated), file chooser, history/back/forward, dark UI |
 | Agent loop | observe → understand (injection/challenge scan) → (vision?) → LLM → parse → validate → policy → confirm? → execute → verify |
-| Hybrid perception | compact ref-tagged DOM snapshots, page metadata, policy-gated VLM screenshots, ARIA/role semantics |
-| Real automation | clicks (full pointer-event sequences), typing (React/Vue-safe native setters), selects, scrolling, find-text, find-element, extraction (text/links/tables), zoom, clipboard |
-| Multi-model | Groq, OpenRouter, Hugging Face router, any OpenAI-compatible endpoint — one provider abstraction |
-| On-device AI (v1.6.0) | llama.cpp runtime built in (arm64): download a GGUF model once (SHA-256 verified), and the agent runs **fully offline** — no API key, nothing leaves the phone. Cloud-first by default (local as last-resort fallback) or local-first privacy mode |
-| Model routing | FAST / REASONING / VISION / STRONG / CHEAP roles, user-configurable, cross-provider fallback |
+| Hybrid perception | compact ref-tagged DOM snapshots, page metadata, policy-gated VLM screenshots, ARIA/role semantics, Set-of-Marks overlays |
+| Real automation | clicks (full pointer-event sequences), typing (React/Vue-safe native setters), selects, scrolling, extraction (text/links/tables), tab verbs (open/switch/close) |
+| Multi-model | Groq, OpenRouter, Hugging Face router, any OpenAI-compatible endpoint — one provider abstraction, live model discovery, capability negotiation, AUTO model selection |
+| On-device AI | llama.cpp runtime built in (arm64): download a GGUF model once (SHA-256 verified, 4-way parallel background download) and the agent runs **fully offline** — no API key, nothing leaves the phone |
+| Background agent mode | hand the task to an isolated headless engine and watch the **notification bar**: step counter, progress, last action; Approve/Deny high-risk actions and answer agent questions straight from the shade; network drops park the task and auto-resume; a reboot marks the task INTERRUPTED — no crash-looping, ever |
 | Human takeover | Pause / Take Control / Resume at any moment; agent re-observes your changes and continues |
 | Verification challenges | reCAPTCHA/hCaptcha/Cloudflare/MFA/rate-limit detection → pause → **you** solve it → resume (no circumvention, ever) |
 | High-risk gates | purchases, password fields, deletions, sends, agreement clicks, executable downloads → confirmation dialog |
 | Prompt-injection defense | 11-rule detector, UNTRUSTED content marking, no native JS bridge, no key access for the agent, URL exfil gates |
-| Memory | session task log, browser state, user facts (view / delete / clear / disable) |
-| Skills | research, shopping, travel, forms, comparison, extraction, productivity, downloads, general-web — declarative JSON, auto-selected |
-| Self-test | built-in loopback test server: normal / dynamic / difficult / injection / phish / challenge / long / tarpit pages |
+| Memory & skills | session task log, user facts, declarative skill library with /grill-me interview recorder + player |
+
+## The browser (v2.0.0 full layer)
+
+| Capability | How it works |
+|---|---|
+| Native ad & tracker blocking | Network-level filtering in `shouldInterceptRequest` using the bundled StevenBlack unified hosts list (~80k domains, MIT) plus ~70 curated URL-pattern rules (ad exchanges, analytics pixels, popup networks). Every blocked request is counted per page, per session and all-time, with live transparency dialogs and a per-site allowlist |
+| Cosmetic filtering | ~1,200 sanitized element-hiding selectors (validated EasyList generic-hide subset, CC-BY-SA-3.0) injected at document start, so ad containers never paint; a MutationObserver keeps hiding dynamically inserted ads |
+| YouTube ad suppression | Prune-before-load: ad structures are deep-pruned from player responses before the player parses them (uBO-scriptlet technique), skip buttons are clicked on sight, and a strictly-scoped fallback fast-forwards confirmed in-stream ads while restoring your exact playback rate. On by default, with a Settings toggle |
+| HTTPS-first | Main-frame `http://` navigations upgrade to `https://` automatically (local hosts skipped); certificate failures raise an explicit dialog — never a silent downgrade |
+| Privacy headers & cookies | Do-Not-Track + Global-Privacy-Control headers on every main-frame load; third-party cookies blocked by default; one-tap data clearing |
+| Incognito tabs | Skip history, bookmarks, previews and session restore; marked in the tab grid; SSL errors auto-cancel |
+| Bookmarks, history, downloads | SQLite-backed bookmarks and history screens (tap to open, long-press to manage), plus a Downloads screen over the system DownloadManager |
+| Find in page | Inline Material bar: debounced `findAllAsync`, prev/next, live n/total counter |
+| Reader view | Clean, theme-aware article rendering powered by Mozilla Readability (Apache-2.0) with byline and reading time; the original page is restored exactly on toggle-off and nothing is re-fetched |
+| Translate page | One-tap full-page translation through Google's `translate.goog` proxy in the same tab — no API key — with a View-original way back |
+| Desktop site, per tab | Desktop UA derived from the device's own WebView engine version (never a stale hardcoded one); one-tap toggle and reload |
+| Print / Save as PDF | The Android printing framework renders the page; the destination picker offers Save as PDF |
+| Add to home screen | Pin any site to your launcher with its favicon |
+| Real browser plumbing | Tabs with a Material grid switcher (live page previews), popups→tabs, downloads with cookie forwarding, file upload, camera/microphone + geolocation prompts, share targets, full-screen video, custom search engines (Google/DDG/Brave/Startpage/Bing/Wikipedia + your own `%s` engines) |
+| Comet Start page | Gradient wordmark, agent call-to-action, search pill honoring your engine, dynamic shortcut tiles (most-visited blended with defaults, or your own list), live blocking-stats card |
+| Session restore | Non-incognito tabs and their selection survive process death and app relaunches |
+| Material You (v2 UI) | Material 3 Expressive token system, dynamic wallpaper-based color on Android 12+ (toggleable), system/light/dark app themes, algorithmic web darkening option, web text size 50–200 %, force-enable zoom, pull-to-refresh with correct scroll handling |
+| Filter list updates | The hosts blocklist and cosmetic rules refresh themselves about once a week (or on demand) with validated, atomically swapped downloads that apply without a restart |
 
 ## Quick start
 
 1. Install the APK (release artifact or `./gradlew assembleDebug`).
-2. Open **Settings → AI Provider**, paste an API key, press **Test & Enable**. That's it: Comet-X discovers the provider's live model catalog, checks what each model supports (JSON / tools / vision), picks the best agent-compatible model automatically (**AUTO**) and is ready. OpenRouter uses **free models only** by default. Extra providers can be enabled the same way and form an automatic fallback chain.
-3. Browse somewhere, tap **Ask Agent**, describe the task ("find the cheapest hotel in Ahmedabad for Friday").
-4. Watch the log; use **Take Control** whenever you want the wheel — logins, CAPTCHAs, payments, judgment calls — then **Resume**.
+2. Open **Settings → AI Provider**, paste an API key, press **Test & Enable**. That's it: Comet-X discovers the provider's live model catalog, checks what each model supports (JSON / tools / vision), picks the best agent-compatible model automatically (**AUTO**) and is ready. Prefer zero keys? **Settings → On-device AI** downloads a GGUF model (background, resumable, SHA-256 verified) and the agent runs offline.
+3. Browse somewhere, tap **Ask Agent**, describe the task ("find the cheapest hotel in Ahmedabad for Friday") — or tap **🛰 Run in background** and watch the notification bar while the isolated engine does the clicking for you.
+4. Blocking is on from your first page load. **Menu → Blocked on this page** shows the running counts; exempt sites from the same dialog or from Settings.
 
 Build details: [docs/development/BUILD.md](docs/development/BUILD.md).
 
-## Changelog
+## Honesty & scope
 
-### v1.2.0 — Phase 2: zero-config AI provider + model compatibility
-- **API key is enough.** The primary workflow is now: choose provider → paste key → **Test & Enable** → READY. No model IDs, no JSON/format settings (§12/§22/§35/§40)
-- **Live model discovery** — `GET /models` is parsed into normalized `ModelInfo` records (context length, capabilities, pricing) and cached with a 6h TTL + key-fingerprint invalidation (§3/§23)
-- **Capability negotiation** — metadata (OpenRouter publishes `supported_parameters`/`pricing`/`input_modalities`) + safe minimal probes + runtime error interpretation decide what each model supports (§4/§24/§25)
-- **Protocol ladder with silent downgrades** — JSON Schema → JSON mode → tool calling → tagged-text → plain-text. "This model does not support JSON" is now a downgrade instruction, never an error (§5/§6/§7)
-- **AgentDecision abstraction** — every protocol maps into one canonical decision; the engine never sees the wire format; ModelResponseInterpreter layer (Json / ToolCall / TaggedText / PlainText) (§7/§8)
-- **AUTO model ranking** — agent-suitability scoring (tools +30, schema +20, json +15, vision +20, context +10, reasoning +10, free +25, latency +10); single-model providers always usable (§10/§11)
-- **OpenRouter free-only AUTO** — paid models excluded automatically in AUTO mode; zero-free-catalog degradation instead of dead-ending
-- **Full recovery ladder** — MODEL_NOT_FOUND → refresh + replacement + retry; RATE_LIMIT → next candidate → next provider → bounded backoff; CONTEXT_TOO_LARGE → observation compression; vision fallback to separate vision model or DOM perception (§16–§20)
-- **Provider error normalization** — 11-kind taxonomy (invalid key, model not found, rate limit, unsupported format/tool/vision, context, network…) (§15)
-- **New Settings UX** — Test & Enable diagnostic checklist (auth → discovery → candidate → structured output → tools → vision; ⚠ never blocks), Advanced disclosure for optional per-role overrides, Agent Compatibility self-test, AI event log viewer (§13/§21/§26/§36)
-- **Migration (§34)** — v1.1.0 per-role model picks become optional Advanced overrides; AUTO drives selection; no installation is bricked
-- Hardcoded model IDs demoted to fallback suggestions only (§33); regression matrix R1–R5 + red-team suite permanently in the test set (§27–§32/§39)
-- Docs: `docs/ai/MODEL_DISCOVERY.md`, `CAPABILITY_NEGOTIATION.md`, `PROVIDER_ARCHITECTURE.md`, `FALLBACK_PROTOCOLS.md`, `docs/testing/AI_COMPATIBILITY_TESTS.md` (§42)
-- **134 unit tests passing** (11 suites)
+- Blocking is domain/path based — it is not a full filter-list DSL (no EasyList syntax). Host-like substrings inside unrelated domains can rarely be caught by the conservative URL-pattern rules; the domain list itself matches on real domain boundaries.
+- In-stream video ads (including YouTube's) are served from the same endpoints as the video itself, so network-level removal is impossible on WebView — the client-side suppression layer (prune-before-load + auto-skip + scoped fallback) is the same technique maintained scriptlet blockers use, and it is an arms race.
+- Incognito shares the WebView cookie jar with normal tabs; history, bookmarks, previews and session persistence are skipped.
+- DNT/GPC headers apply to main-frame requests; WebView does not expose per-subresource header injection.
+- The agent never circulates CAPTCHAs and never touches your keys; high-risk actions always stop for a human.
 
-### v1.1.0
-- **Explicit Save per provider** — fields no longer persist invisibly on focus loss; a dirty-state indicator and Save ✓ toast make state obvious
-- **Test button per provider** — real two-step connectivity check (model catalog + live `pong` completion) with latency; result badge persisted (✓ Working / ✗ Failed)
-- **Model selection rebuilt** — per-role dropdowns: `Default (recommended)` → works with a key alone, live-fetched catalog (`Fetch models`), and `Custom…` manual entry; replaces five raw text boxes
-- **User-ordered fallback chain** — replace single "active provider" with enabled-toggle + priority ordering (▲/▼); ModelRouter walks the chain and fails over automatically
-- **Self-run URL normalization** — `localhost:11434` → `http://localhost:11434/v1` with a live "will be saved as" hint; saved base URLs are now actually applied at runtime (previously silently ignored — the reported "URL seems off" bug)
-- Fixed random build failure in release-keystore generation (`nextInt` off-by-two)
-- 86 unit tests passing (incl. new `ChainAndUrlTest`)
+## Security posture (unchanged since v1.0)
 
-### v1.0.0
-- Initial release: real WebView browser + autonomous agent loop + hybrid perception + multi-provider routing + human takeover + challenge detection + skills + memory + local red-team test server.
+No native JS bridge objects, no key access for page content, file/content access disabled, mixed content never, popups require a user gesture, non-http(s) handoffs require an explicit human decision, executable downloads are gated, prompt-injection scanning on every observation, agent downloads and external launches are policy-checked. The background engine runs in an isolated headless WebView that is structurally unreachable from the user's tab strip, and nothing of ours runs after a reboot (START_NOT_STICKY, no boot receiver — no "App keep closing").
 
+## Licenses & attribution
 
-## Architecture in one line
-
-`LLM proposes → ActionParser → ActionValidator → SafetyPolicy → (human confirms) → ActionExecutor` — the model never touches the engine directly.
-
-Full documentation:
-
-- [docs/research/FOUNDATION_COMPARISON.md](docs/research/FOUNDATION_COMPARISON.md) — weighted scorecard of browser/agent/vision/automation foundations
-- [docs/research/FOUNDATION_DECISION.md](docs/research/FOUNDATION_DECISION.md) — what was selected and what was rejected (and why)
-- [docs/research/LICENSE_ANALYSIS.md](docs/research/LICENSE_ANALYSIS.md)
-- [docs/architecture/SYSTEM_ARCHITECTURE.md](docs/architecture/SYSTEM_ARCHITECTURE.md) · [AGENT_ARCHITECTURE.md](docs/architecture/AGENT_ARCHITECTURE.md) · [VISION_ARCHITECTURE.md](docs/architecture/VISION_ARCHITECTURE.md)
-- [docs/security/THREAT_MODEL.md](docs/security/THREAT_MODEL.md) · [SECURITY_AUDIT.md](docs/security/SECURITY_AUDIT.md) · [RED_TEAM_REPORT.md](docs/security/RED_TEAM_REPORT.md)
-- [docs/testing/TEST_REPORT.md](docs/testing/TEST_REPORT.md)
-
-## Privacy
-
-- API keys: encrypted with the Android Keystore (AES-256/GCM), never bundled, never logged.
-- Page content: compact observations (and policy-gated screenshots) go **only** to the provider you configure. Memory stays on-device.
-- No analytics, no tracking, no telemetry, no baked-in credentials.
-- Cleartext HTTP is blocked system-wide except the loopback self-test server.
-
-## Security model (summary)
-
-Web content is **untrusted data**, never instructions. The agent's only output channel is a validated JSON action protocol. Consequential actions require you. Verification challenges pause the agent for you to solve. See [THREAT_MODEL.md](docs/security/THREAT_MODEL.md) for the full model and [RED_TEAM_REPORT.md](docs/security/RED_TEAM_REPORT.md) for the adversarial pass that hardened this build.
-
-## Known limitations (v1, honest)
-
-1. No on-device model — LLM calls need a provider key and connectivity.
-2. The agent drives **web content only**; native Android app automation would require a system AccessibilityService (roadmap).
-3. Single persistent browser profile (multi-profile isolation is process-level work; roadmap).
-4. Vision quality depends on the configured VLM; screenshots are sent to that provider when the vision policy fires.
-5. File uploads from the agent are impossible by web-security design (browsers refuse programmatic file-input population) — use Take Control for uploads.
-6. Agent-side `open_tab`/`switch_tab`/`download` are validated but only partially wired in v1 (the browser layer supports all of these for human actions).
-
-## Attribution
-
-Design concepts adapted (no code copied) from Hugging Face **smolagents** (tool-calling agent loop, model abstraction, HITL) and **browser-use** (DOM-state serialization, hybrid DOM+vision perception, action registry, recovery), both MIT. Engine: Android System WebView (Chromium). See [LICENSE_ANALYSIS.md](docs/research/LICENSE_ANALYSIS.md).
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+- Comet-X code: same owner as Zerium; browser-layer sources adapted from Zerium (GPL-3.0).
+- Bundled hosts list: [StevenBlack/hosts](https://github.com/StevenBlack/hosts), MIT.
+- Cosmetic selectors: validated EasyList generic-hide subset, CC-BY-SA-3.0 (attribution in the asset header).
+- `assets/readability.js`: Mozilla Readability v0.6.0, Apache-2.0 (header in the asset).
+- Android, androidx, Material Components: Apache 2.0 / their respective licenses.

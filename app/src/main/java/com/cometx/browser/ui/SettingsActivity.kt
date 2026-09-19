@@ -26,6 +26,8 @@ import com.cometx.browser.CometApp
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.cometx.browser.browse.FilterUpdater
+import com.cometx.browser.browse.SearchEngines
 import com.cometx.browser.memory.MemoryStore
 import com.cometx.browser.security.SecureStore
 import kotlinx.coroutines.CoroutineScope
@@ -157,6 +159,36 @@ class SettingsActivity : AppCompatActivity() {
         header("Browser")
         addTextField("Homepage", settings.homepage(), autoSave = true) { settings.setHomepage(it) }
         addCheck("Allow third-party cookies", settings.thirdPartyCookies()) { settings.setThirdPartyCookies(it) }
+        addSearchEngine()
+        addTextZoom()
+        addCheck("Force-enable zoom on pages that block it", settings.forceZoom()) { settings.setForceZoom(it) }
+        addCheck("Media autoplay (off = sites need a tap before playing)", settings.mediaAutoplay()) { settings.setMediaAutoplay(it) }
+        addCheck("Pull-to-refresh gesture", settings.pullToRefresh()) { settings.setPullToRefresh(it) }
+
+        header("Privacy & blocking")
+        body("Comet-X drops ad and tracker requests before they reach the network (StevenBlack hosts list + curated URL rules), hides ad containers before first paint (cosmetic rules) and suppresses YouTube ads client-side. Blocked counts never leave the device.")
+        addCheck("Block ads and trackers (network level)", settings.blockAds()) { settings.setBlockAds(it) }
+        addCheck("Hide ad containers (cosmetic filtering)", settings.blockCosmetic()) { settings.setBlockCosmetic(it) }
+        addCheck("YouTube ad suppression", settings.youtubeSuppress()) { settings.setYoutubeSuppress(it) }
+        addCheck("Send Do-Not-Track and Global-Privacy-Control headers", settings.privacyHeaders()) { settings.setPrivacyHeaders(it) }
+        addCheck("HTTPS-first: upgrade http:// pages automatically", settings.httpsUpgrade()) { settings.setHttpsUpgrade(it) }
+        addCheck("Accept first-party cookies", settings.cookiesEnabled()) { settings.setCookiesEnabled(it) }
+        addCheck("Darken web pages on dark theme (algorithmic)", settings.webForceDark()) { settings.setWebForceDark(it) }
+        addAllowlistEditor()
+        body("Blocked so far (all time): ${settings.totalBlocked()}")
+        val resetBlockedBtn = actionButton("Reset blocked counter", Tonal.TONAL)
+        root.addView(resetBlockedBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(8)) })
+        resetBlockedBtn.setOnClickListener {
+            settings.resetTotalBlocked()
+            buildUi()
+        }
+        addFilterUpdater()
+
+        header("Appearance")
+        addThemePicker()
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            addCheck("Material You: tint the app with your wallpaper colors", settings.materialYou()) { settings.setMaterialYou(it) }
+        }
 
         header("Memory")
         body(memorySummary())
@@ -910,6 +942,180 @@ class SettingsActivity : AppCompatActivity() {
         spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, pos: Int, id: Long) {
                 settings.setVisionMode(SettingsRepository.VisionMode.valueOf(modes[pos]))
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+    }
+
+    // ------------------------------------------------- v2.0.0 browser settings
+
+    /** Search engine picker (built-ins + customs) + custom-engine manager. */
+    private fun addSearchEngine() {
+        body("Search engine: used by the omnibox and the start page. Custom engines need a URL with a %s placeholder for the query.")
+        val customs = com.cometx.browser.browse.SearchEngines.parseCustomEngines(settings.customEngines())
+        val all = com.cometx.browser.browse.SearchEngines.allEngines(settings.customEngines())
+        val spinner = Spinner(this)
+        spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, all.map { it.name }).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        val current = settings.searchEngine().coerceIn(0, all.size - 1)
+        spinner.setSelection(current)
+        root.addView(spinner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(8)) })
+        spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, pos: Int, id: Long) {
+                settings.setSearchEngine(pos)
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+        val manageBtn = actionButton("Custom search engines (${customs.size})", Tonal.TONAL)
+        root.addView(manageBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(8)) })
+        manageBtn.setOnClickListener { showCustomEngineDialog() }
+    }
+
+    /** Add/set-default/delete loop for user-defined engines (custom, safe). */
+    private fun showCustomEngineDialog() {
+        val customs = com.cometx.browser.browse.SearchEngines.parseCustomEngines(settings.customEngines()).toMutableList()
+        val names = if (customs.isEmpty()) arrayOf("(none yet)") else customs.map { it.name }.toTypedArray()
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Custom search engines")
+            .setItems(names) { _, which ->
+                if (customs.isNotEmpty()) {
+                    customs.removeAt(which)
+                    settings.setCustomEngines(com.cometx.browser.browse.SearchEngines.serializeCustomEngines(customs))
+                    buildUi()
+                }
+            }
+            .setPositiveButton("Add engine") { _, _ -> showAddEngineDialog(customs) }
+            .setNeutralButton("Close", null)
+            .show()
+    }
+
+    private fun showAddEngineDialog(customs: MutableList<com.cometx.browser.browse.SearchEngines.Engine>) {
+        val nameInput = EditText(this).apply { hint = "Name (e.g. Kagi)" }
+        val urlInput = EditText(this).apply { hint = "https://kagi.com/search?q=%s" }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(nameInput)
+            addView(urlInput)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Add search engine")
+            .setView(box)
+            .setPositiveButton("Add") { _, _ ->
+                val name = nameInput.text.toString().trim()
+                val url = urlInput.text.toString().trim()
+                if (!com.cometx.browser.browse.SearchEngines.validCustomEngine(name, url)) {
+                    toast("Engine needs a name and a URL containing %s")
+                    return@setPositiveButton
+                }
+                if (customs.size >= com.cometx.browser.browse.SearchEngines.MAX_CUSTOM) {
+                    toast("Custom engine list is full")
+                    return@setPositiveButton
+                }
+                customs.add(com.cometx.browser.browse.SearchEngines.Engine(name, url, true))
+                settings.setCustomEngines(com.cometx.browser.browse.SearchEngines.serializeCustomEngines(customs))
+                buildUi()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** Web text zoom 50–200% applied live to every open tab. */
+    private fun addTextZoom() {
+        val label = TextView(this).apply {
+            text = "Web text size: ${settings.textZoom()}% (applied live to every tab)"
+            textSize = 12f
+            setTextColor(getColor(com.cometx.browser.R.color.text_secondary))
+        }
+        root.addView(label, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(4)) })
+        val seek = android.widget.SeekBar(this)
+        seek.max = 150 // 50..200
+        seek.progress = (settings.textZoom() - 50).coerceIn(0, 150)
+        root.addView(seek, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(8)) })
+        seek.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: android.widget.SeekBar?, value: Int, fromUser: Boolean) {
+                label.text = "Web text size: ${value + 50}%"
+            }
+            override fun onStartTrackingTouch(s: android.widget.SeekBar?) {}
+            override fun onStopTrackingTouch(s: android.widget.SeekBar?) {
+                settings.setTextZoom((s?.progress ?: 50) + 50)
+            }
+        })
+    }
+
+    /** Multiline per-site blocking exemption editor. */
+    private fun addAllowlistEditor() {
+        val editBtn = actionButton("Sites exempt from blocking", Tonal.TONAL)
+        root.addView(editBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(8)) })
+        editBtn.setOnClickListener {
+            val input = EditText(this).apply {
+                hint = "example.com\nanother.org"
+                setText(settings.allowlist())
+                minLines = 3
+            }
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Sites exempt from blocking")
+                .setMessage("One host per line. Requests to these sites are never blocked.")
+                .setView(input)
+                .setPositiveButton("Save") { _, _ ->
+                    settings.setAllowlist(input.text.toString())
+                    val app = CometApp.app
+                    app.adBlocker.rebuildAllowlist(input.text.toString())
+                    toast("Blocking exemption saved")
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+
+    /** Manual + automatic filter-list refresh (validated, atomic swap). */
+    private fun addFilterUpdater() {
+        addCheck("Keep filter lists updated (about weekly)", settings.autoUpdateLists()) { settings.setAutoUpdateLists(it) }
+        val last = settings.listLastUpdate()
+        val lastText = if (last == 0L) "never" else SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(last))
+        body("Last update: $lastText · Sources: StevenBlack hosts (MIT) + curated cosmetic rules.")
+        val updateBtn = actionButton("Update filter lists", Tonal.TONAL)
+        root.addView(updateBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(8)) })
+        updateBtn.setOnClickListener {
+            toast("Updating filter lists…")
+            FilterUpdater.updateAll(this) { updated ->
+                if (updated > 0) {
+                    settings.setListLastUpdate(System.currentTimeMillis())
+                    val app = CometApp.app
+                    app.adBlocker.loadFrom(filesDir) {
+                        assets.open(com.cometx.browser.browse.AdBlocker.ASSET_FILE).bufferedReader().use { it.readLines() }
+                    }
+                    app.adBlocker.rebuildAllowlist(settings.allowlist())
+                    com.cometx.browser.browse.CosmeticFilter.invalidate()
+                    toast("Filter lists updated")
+                } else {
+                    toast("Update failed — the bundled lists keep blocking")
+                }
+                buildUi()
+            }
+        }
+    }
+
+    /** App theme: follow system / light / dark (applies immediately). */
+    private fun addThemePicker() {
+        val spinner = Spinner(this)
+        val modes = listOf("Follow system", "Light", "Dark")
+        spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, modes).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        spinner.setSelection(settings.appTheme().coerceIn(0, 2))
+        root.addView(spinner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(8)) })
+        spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, pos: Int, id: Long) {
+                settings.setAppTheme(pos)
+                androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+                    when (pos) {
+                        1 -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                        2 -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                        else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                    }
+                )
             }
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }

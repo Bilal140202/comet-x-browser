@@ -66,5 +66,25 @@
             android:configChanges="uiMode"
             android:label="@string/settings_title"
             android:parentActivityName=".ui.MainActivity" />
+
+        <!-- v2.0.0 full-browser layer: bookmarks / history / downloads screens -->
+        <activity
+            android:name=".ui.BookmarksActivity"
+            android:exported="false"
+            android:configChanges="uiMode"
+            android:label="@string/menu_bookmarks"
+            android:parentActivityName=".ui.MainActivity" />
+        <activity
+            android:name=".ui.HistoryActivity"
+            android:exported="false"
+            android:configChanges="uiMode"
+            android:label="@string/menu_history"
+            android:parentActivityName=".ui.MainActivity" />
+        <activity
+            android:name=".ui.DownloadsActivity"
+            android:exported="false"
+            android:configChanges="uiMode"
+            android:label="@string/menu_downloads"
+            android:parentActivityName=".ui.MainActivity" />
     </application>
 </manifest>

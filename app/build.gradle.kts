@@ -40,8 +40,8 @@ android {
         applicationId = "com.cometx.browser"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10
-        versionName = "1.8.0"
+        versionCode = 11
+        versionName = "2.0.0"
 
         // v1.6.0 on-device AI: llama.cpp runtime is built from source (pinned,
         // hash-verified) for arm64 only — the architecture of every real phone
@@ -133,6 +133,13 @@ dependencies {
     // Dependency decision record: docs/ui/COMET_UI_CURRENT_STATE.md §8
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
+
+    // v2.0.0 full-browser layer (ported from the Zerium codebase):
+    // document-start scripting + algorithmic darkening (webkit), tab grid
+    // (recyclerview), pull-to-refresh (swiperefreshlayout)
+    implementation("androidx.webkit:webkit:1.11.0")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.12.2")

@@ -301,3 +301,93 @@ and ActionExecutor pipeline — only the driver (sink) and the host differ.
 Baseline is now **265 tests / 27 suites** (was 244/26; +1 suite:
 BackgroundAgentTest). `assembleRelease` must produce versionCode 10 /
 versionName 1.8.0. Cert SHA-256 `970e0a30…` continuity maintained.
+
+---
+
+# § v2.0.0 ADDENDUM — OPERATION COMET GRAND SLAM (full browser layer + Material You + new brand)
+
+Source: the user's other browser project **Zerium** (ansaribilal14/zerium-browser, GPL-3.0,
+same owner) — its complete browser-feature layer was ported into Comet-X additively and
+re-branded. Everything above remains binding. With no browsing done, the agent surface
+(panel, background mode, skills, on-device AI) is byte-identical to v1.8.0.
+
+## A. Port fixes (defects found in the source project and corrected here)
+
+| # | Fix |
+|---|---|
+| PF-1 | `CosmeticFilter.buildScript` emitted `hide(n2])` — a JS syntax error that failed the WHOLE script at parse time (fallback branch dead). Port emits `hide(n2[m])`; `BrowserLogicTest` asserts the corrected form |
+| PF-2 | `StartPageLogic.autoTiles` marked a host as used BEFORE the default-tile check, so visiting github.com/HN suppressed BOTH the history tile and the default tile. Port checks `defaultHosts` first |
+| PF-3 | The omnibox search template must retain its `%s` placeholder — the port's first draft dropped it and the test gate caught it (`DEFAULT_TEMPLATE` now carries `%s`; UserInput tests assert the full query URL) |
+
+## B. New view IDs (additive; §A originals untouched — urlBar stays EditText, webContainer
+stays FrameLayout, all panel/banner IDs unchanged)
+
+| ID | Layout | Used as | Contract |
+|---|---|---|---|
+| `securityIcon` | activity_main | ImageView | TLS state icon (lock/globe/home); tap = security info dialog |
+| `findBar` / `findInput` / `findCount` / `btnFindPrev` / `btnFindNext` / `btnFindClose` | activity_main | LinearLayout / EditText / TextView / Button ×3 | inline find-in-page; debounced 250 ms `findAllAsync`; counter "n/total" only when counting finishes |
+| `swipe` | activity_main | BrowserSwipeLayout (SwipeRefreshLayout) | wraps `webContainer`; enabled iff page loaded AND pull-to-refresh setting on; `canChildScrollUp()` forwarded to the visible WebView (Zerium's scroll-hijack fix) |
+| `tabSwitcher` / `tabsGrid` / `tabCount` / `btnNewTab` / `btnNewIncognito` / `btnCloseAllTabs` / `btnSwitcherClose` | activity_main | LinearLayout overlay / RecyclerView / TextView / Button ×4 | full-screen Material tab switcher (GridLayoutManager ×2); tab count "Tabs (n)"; root is now a FrameLayout wrapping the original vertical LinearLayout |
+| `tabCard` / `tabPreview` / `tabTitle` / `tabUrl` / `tabIncognito` / `btnCloseTab` | item_tab_grid | MaterialCardView / ImageView / TextView ×3 / Button | tap = switch, ✕ = close (v1.6.1 row-level click contract carried over); active card carries accent stroke; RGB_565 preview ≤320 px, never captured for incognito |
+| `toolbar` / `list` / `empty` | activity_list | MaterialToolbar / ListView / TextView | shared shell for Bookmarks / History / Downloads |
+
+`sheet_tabs.xml` and `item_tab.xml` remain in the repo (dead layouts are allowed to keep
+compiling per §A); the live switcher is the `tabSwitcher` overlay via
+`MainActivity.showTabDialog()` (method name preserved from F-02).
+
+## C. New behavioral contracts (do not break)
+
+| # | Contract |
+|---|---|
+| BLK-1 | Network blocking runs in `shouldInterceptRequest`: blocked requests return an empty 404 BEFORE reaching the network. Engine = `browse.AdBlocker` (StevenBlack hosts + conservative substring URL rules + per-site allowlist); app-scoped in `CometApp`, loaded off the main thread, swapped atomically on reload |
+| BLK-2 | Per-page / per-session / all-time counters: `Tab.blockedOnPage` (reset onPageStarted), `AdBlocker.sessionBlocked`, `SettingsRepository.totalBlocked` (committed once per finished page). All three are visible (security dialog, Blocked-on-this-page dialog, start-page stat card) |
+| BLK-3 | Cosmetic filtering injects `browse.CosmeticFilter.buildScript` at document start on all http(s) origins (WebViewCompat) with a page-finish fallback; selectors are sanitized (`SAFE_SELECTOR`), batched (60/batch) with per-selector retry; hiding is rAF-debounced + MutationObserver-armed |
+| BLK-4 | YouTube suppression (`assets/yt-block.js`) injects at document start for *.youtube.com / youtube-nocookie / music.youtube.com, with a page-finish fallback keyed on `YouTubeFilter.matches(host)`; both master switches (blockAds, youtubeSuppress) gate it |
+| BLK-5 | "Blocked on this page" dialog offers **Allow this site** → host appended to the newline allowlist, `rebuildAllowlist` applies immediately (duplicates detected) |
+| BLK-6 | Filter lists auto-refresh about weekly (`FilterUpdater.dueForAutoUpdate`) or via the Settings row; downloads validate (min size + content marker) and swap ATOMICALLY — a failed download can never degrade blocking; updates invalidate the cosmetic cache and reload the blocklist without a restart; never runs under Robolectric |
+| BLK-7 | The background agent's headless WebView applies the same network blocking (`HeadlessWebViewFactory.networkBlock` wired in CometApp; null = legacy no-op) |
+| PRIV-1 | Main-frame loads route through `MainActivity.loadInTab`: DNT + Sec-GPC headers when `privacyHeaders()` is on (all UI tabs AND restored/agent-opened tabs — loading is deferred to the caller by design) |
+| PRIV-2 | HTTPS-first: `browse.HttpsFirst.upgraded` rewrites main-frame http→https; localhost/.local/.lan/.internal/.home, 10/8, 127/8, 192.168/16, 172.16–31/12 and IPv6 literals are skipped; SSL failures still raise the explicit dialog |
+| PRIV-3 | SSL errors: explicit Proceed/Cancel dialog (incognito tabs ALWAYS cancel, no dialog) |
+| PRIV-4 | Geolocation and camera/microphone web permissions are prompt-gated (Zerium pattern); camera/mic runtime requests flow through `onWebPermissionRequest` → system permission dialog → `pendingWebPermission.grant/deny`; everything else is denied |
+| PRIV-5 | Incognito tabs: no history writes, no bookmarks, no previews, no favicon capture, no saved-session entries; marked with a badge in the tab grid |
+| PRIV-6 | First-party cookies switch (`cookiesEnabled`, default on) + pre-existing third-party switch; downloads forward session cookies + UA |
+| FEAT-1 | Bookmarks: SQLite (`browse.BookmarksStore`), menu add/remove with toasts, BookmarksActivity (tap = open in new tab via activity result, long-press = delete) |
+| FEAT-2 | History: SQLite (`browse.HistoryStore`), written on page finish for non-incognito http pages only; HistoryActivity (tap = open, long-press = delete, toolbar Clear-all with confirm) |
+| FEAT-3 | Downloads screen: system DownloadManager query; tap = open (mime-matched), long-press = remove |
+| FEAT-4 | Find in page: inline bar (see §B), IME action = next, dismissed by back / tab switch / tab close, matches cleared on hide |
+| FEAT-5 | Desktop site per tab: runtime-derived UA (device's own Chromium major in `major.0.0.0` form, X11 platform token), toggle swaps UA + reloads; stock mobile UA preserved per tab |
+| FEAT-6 | Reader view: Mozilla Readability (v0.6.0, Apache-2.0, bundled asset) via `evaluateJavascript`; DOM snapshot restored on toggle-off; honest "does not look like an article" for short pages; per-tab `readerActive` state reset on navigation |
+| FEAT-7 | Translate page: Google translate.goog proxy in the same tab (`browse.TranslateSupport`, pure and unit-tested); menu flips to View original; pre-translation URL tracked per tab with best-effort reconstruction |
+| FEAT-8 | Print / Save as PDF via `createPrintDocumentAdapter` (loaded pages only) |
+| FEAT-9 | Add to home screen: pinned shortcut (API 26+) with page favicon or launcher icon; graceful toast on unsupported launchers |
+| FEAT-10 | Share: ACTION_SEND chooser with the page URL |
+| FEAT-11 | Start page: `browse.StartPage` renders the Comet-X branded NTP (gradient wordmark, agent CTA, search pill honoring the selected engine, 8 dynamic tiles = custom or most-visited-blend, live blocked-stats card); sentinel `about:home` / `cometx://home` routes there from the omnibox; cold start opens it unless a custom homepage is set; pull-to-refresh disabled on it |
+| FEAT-12 | Session restore: non-incognito tab URLs ("||"-joined, max 10) + index persisted on every pause; data:/about:blank normalize to `about:home`; restored tabs load through `loadInTab` |
+| FEAT-13 | Custom search engines: name + `%s` URL (validated, max 20) stored as JSON; engine picker covers built-ins (Google first — preserves v1.x default) + customs; the start-page pill uses the same engine |
+| UI-1 | Material You dynamic color: applied per-activity on API 31+ when `materialYou()` is on (read pre-inflation from prefs); fallback = the shipped Comet violet token system |
+| UI-2 | App theme System/Light/Dark via `AppCompatDelegate.setDefaultNightMode` — applied in `CometApp.onCreate` (first frame) and immediately from Settings |
+| UI-3 | Full-screen video: `onShowCustomView` moves the view into an addContentView FrameLayout, hides topBar/askBar/progress, keeps screen on; back exits; state via `onFullscreenChanged` |
+| UI-4 | Renderer crash (`onRenderProcessGone`) destroys the WebView, closes that tab with a toast — never kills the process |
+| UI-5 | Web text zoom 50–200 % applied live to ALL tabs on resume; force-zoom rewrites the viewport meta at document start; zoom controls enabled (no on-screen buttons) |
+| UI-6 | Pull-to-refresh: `BrowserSwipeLayout` forwards `canChildScrollUp()` to the visible WebView per gesture (scroll-hijack fix); disabled on start pages and when the setting is off |
+| BRAND-1 | New adaptive launcher icon (deep-space radial background + fixed star field; glowing comet head + tapered three-band trail; sparkle), `ic_launcher_round`, and a themed `monochrome` layer; minSdk 26 → no legacy PNGs needed |
+| BRAND-2 | Start-page wordmark/branding is generated HTML only — no bitmap brand assets |
+| BRAND-3 | License/attribution carried: Zerium code GPL-3.0 (same owner), StevenBlack hosts MIT, cosmetic subset EasyList CC-BY-SA-3.0, readability.js Apache-2.0 (headers in the assets) |
+
+## D. Menu contract update (F-03 extension)
+
+`showMenu` now matches by **item ID** (was literal CharSequence equality — F-03 semantics
+extended, all five v1.x actions preserved: New tab / Close-current via tab grid / Clear
+browsing data / Agent self-test / Settings). New items: New incognito, Add/Remove bookmark,
+Bookmarks, History, Downloads, Find in page, Desktop site (checkable), Reader view,
+Translate/View original, Print, Add to home screen, Share, Blocked on this page.
+
+## E. Regression gate update
+
+Baseline is now **305 tests / 31 suites** (was 265/27; +4 suites: SearchEnginesTest,
+AdBlockerTest, BrowserLogicTest, StoresTest). TabAndOmniboxTest's two sheet tests were
+re-targeted to the tab GRID (same semantics: card tap switches + omnibox syncs, ✕ closes)
+and the defocus-restore expectation is the v2.0.0 start-page sentinel `about:home`.
+`assembleRelease` must produce versionCode 11 / versionName 2.0.0. Cert SHA-256
+`970e0a30…` continuity maintained.

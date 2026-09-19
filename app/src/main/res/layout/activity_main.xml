@@ -1,507 +1,680 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  COMET AURORA — browser shell + agent pseudo-sheet.
+  COMET AURORA shell + v2.0.0 full-browser layer.
   Contracts (docs/ui/FUNCTIONALITY_LOCK.md §A): all IDs preserved with
   type-compatible widgets; askBar/agentPanel/challengeBanner/answerRow/
   skillChips/userSkillChips stay LinearLayout; userSkillsScroll stays
   HorizontalScrollView; logList stays ListView; urlBar/goalInput/answerInput
   stay EditText. MaterialButton extends Button; no android:background on
   MaterialButtons (styles only — design system §6).
+
+  v2.0.0 additions (additive): securityIcon, findBar row, BrowserSwipeLayout
+  pull-to-refresh wrapper (webContainer keeps its ID/type), and the Material
+  tab-switcher overlay (tabSwitcher + tabsGrid) inside a new FrameLayout root.
 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@color/background">
+    android:layout_height="match_parent">
 
-    <!-- ================= Top bar (56dp, surface + hairline) ================= -->
     <LinearLayout
-        android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="2dp"
-        android:background="@color/surface">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnBack"
-            style="@style/Comet.Button.Icon"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:contentDescription="@string/cd_back"
-            app:icon="@drawable/ic_arrow_back" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnForward"
-            style="@style/Comet.Button.Icon"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:contentDescription="@string/cd_forward"
-            app:icon="@drawable/ic_arrow_forward" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnReload"
-            style="@style/Comet.Button.Icon"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:contentDescription="@string/cd_reload"
-            app:icon="@drawable/ic_refresh" />
-
-        <EditText
-            android:id="@+id/urlBar"
-            android:layout_width="0dp"
-            android:layout_height="44dp"
-            android:layout_weight="1"
-            android:layout_marginHorizontal="6dp"
-            android:paddingHorizontal="14dp"
-            android:background="@drawable/bg_urlbar"
-            android:hint="@string/url_hint"
-            android:textColorHint="@color/on_surface_variant"
-            android:textColor="@color/on_surface"
-            android:textSize="15sp"
-            android:inputType="textUri"
-            android:imeOptions="actionGo"
-            android:maxLines="1"
-            android:importantForAutofill="no" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnTabs"
-            style="@style/Comet.Button.Icon"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:contentDescription="@string/cd_tabs"
-            app:icon="@drawable/ic_tab" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnMenu"
-            style="@style/Comet.Button.Icon"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:contentDescription="@string/cd_menu"
-            app:icon="@drawable/ic_more_vert" />
-    </LinearLayout>
-
-    <!-- hairline divider under the top bar -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/outline_variant" />
-
-    <ProgressBar
-        android:id="@+id/progress"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="2dp"
-        android:max="100"
-        android:progressTint="@color/primary"
-        android:progressBackgroundTint="@color/outline_variant"
-        android:visibility="gone" />
-
-    <!-- ================= Challenge banner (warningContainer tonal) ================= -->
-    <LinearLayout
-        android:id="@+id/challengeBanner"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginHorizontal="8dp"
-        android:layout_marginTop="6dp"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="8dp"
-        android:background="@drawable/bg_banner"
-        android:visibility="gone">
-
-        <ImageView
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:importantForAccessibility="no"
-            app:srcCompat="@drawable/ic_warning"
-            app:tint="@color/on_warning_container" />
-
-        <TextView
-            android:id="@+id/challengeText"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginHorizontal="8dp"
-            android:text="@string/challenge_default"
-            android:textColor="@color/on_warning_container"
-            android:textSize="13sp"
-            android:maxLines="2" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnChallengeTake"
-            style="@style/Comet.Button.Compact"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="@string/take_control"
-            android:textColor="@color/on_warning_container" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnChallengeResume"
-            style="@style/Comet.Button.Compact"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_marginStart="4dp"
-            android:text="@string/resume"
-            android:textColor="@color/on_warning_container" />
-    </LinearLayout>
-
-    <!-- ================= Web container ================= -->
-    <FrameLayout
-        android:id="@+id/webContainer"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
-
-    <!-- ================= Ask Agent bar (the one floating pill) ================= -->
-    <LinearLayout
-        android:id="@+id/askBar"
-        android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginHorizontal="12dp"
-        android:layout_marginBottom="12dp"
-        android:paddingHorizontal="16dp"
-        android:background="@drawable/bg_askbar"
-        android:elevation="2dp"
-        android:foreground="?android:attr/selectableItemBackground">
-
-        <ImageView
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:importantForAccessibility="no"
-            app:srcCompat="@drawable/ic_auto_awesome"
-            app:tint="@color/accent" />
-
-        <TextView
-            android:id="@+id/askBarText"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="10dp"
-            android:text="@string/ask_agent"
-            android:textColor="@color/on_surface_variant"
-            android:textSize="14sp"
-            android:maxLines="1"
-            android:ellipsize="end" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnOpenAgent"
-            style="@style/Comet.Button.Compact"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_marginStart="8dp"
-            android:text="@string/open"
-            android:textColor="@color/primary" />
-    </LinearLayout>
-
-    <!-- ================= Agent panel (pseudo-sheet, 28dp top corners) ================= -->
-    <LinearLayout
-        android:id="@+id/agentPanel"
-        android:layout_width="match_parent"
-        android:layout_height="340dp"
+        android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="@drawable/bg_agent_panel"
-        android:elevation="8dp"
-        android:paddingHorizontal="16dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="12dp"
-        android:visibility="gone">
+        android:background="@color/background">
 
-        <!-- decorative drag handle -->
-        <View
-            android:layout_width="24dp"
-            android:layout_height="4dp"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="6dp"
-            android:background="@drawable/bg_drag_handle" />
-
-        <!-- header: state dot + status + step counter + collapse -->
+        <!-- ================= Top bar (56dp, surface + hairline) ================= -->
         <LinearLayout
+            android:id="@+id/topBar"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <View
-                android:id="@+id/statusDot"
-                android:layout_width="12dp"
-                android:layout_height="12dp"
-                android:background="@drawable/bg_status_dot" />
-
-            <TextView
-                android:id="@+id/statusText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:text="@string/agent_idle"
-                android:textColor="@color/on_surface"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:singleLine="true"
-                android:ellipsize="end" />
-
-            <TextView
-                android:id="@+id/stepText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:textColor="@color/on_surface_variant"
-                android:textSize="12sp" />
+            android:gravity="center_vertical"
+            android:paddingHorizontal="2dp"
+            android:background="@color/surface">
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnPanelClose"
+                android:id="@+id/btnBack"
                 style="@style/Comet.Button.Icon"
-                android:layout_width="44dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="@string/cd_back"
+                app:icon="@drawable/ic_arrow_back" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnForward"
+                style="@style/Comet.Button.Icon"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="@string/cd_forward"
+                app:icon="@drawable/ic_arrow_forward" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnReload"
+                style="@style/Comet.Button.Icon"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="@string/cd_reload"
+                app:icon="@drawable/ic_refresh" />
+
+            <!-- v2.0.0: TLS state icon (lock/globe/home) — tap = security info -->
+            <ImageView
+                android:id="@+id/securityIcon"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="2dp"
+                android:contentDescription="@string/cd_security"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                app:srcCompat="@drawable/ic_home"
+                app:tint="@color/on_surface_variant" />
+
+            <EditText
+                android:id="@+id/urlBar"
+                android:layout_width="0dp"
                 android:layout_height="44dp"
-                android:contentDescription="@string/cd_collapse"
-                app:icon="@drawable/ic_keyboard_arrow_down" />
+                android:layout_weight="1"
+                android:layout_marginHorizontal="6dp"
+                android:paddingHorizontal="14dp"
+                android:background="@drawable/bg_urlbar"
+                android:hint="@string/url_hint"
+                android:textColorHint="@color/on_surface_variant"
+                android:textColor="@color/on_surface"
+                android:textSize="15sp"
+                android:inputType="textUri"
+                android:imeOptions="actionGo"
+                android:maxLines="1"
+                android:importantForAutofill="no" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnTabs"
+                style="@style/Comet.Button.Icon"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="@string/cd_tabs"
+                app:icon="@drawable/ic_tab" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnMenu"
+                style="@style/Comet.Button.Icon"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="@string/cd_menu"
+                app:icon="@drawable/ic_more_vert" />
         </LinearLayout>
 
-        <EditText
-            android:id="@+id/goalInput"
+        <!-- hairline divider under the top bar -->
+        <View
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:padding="12dp"
-            android:background="@drawable/bg_panel_input"
-            android:hint="@string/goal_hint"
-            android:textColorHint="@color/on_surface_variant"
-            android:textColor="@color/on_surface"
-            android:textSize="14sp"
-            android:minLines="2"
-            android:maxLines="4"
-            android:inputType="textMultiLine|textCapSentences" />
+            android:layout_height="1dp"
+            android:background="@color/outline_variant" />
 
-        <HorizontalScrollView
+        <ProgressBar
+            android:id="@+id/progress"
+            style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:scrollbars="none"
-            android:clipToPadding="false">
-
-            <LinearLayout
-                android:id="@+id/skillChips"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingVertical="2dp" />
-        </HorizontalScrollView>
-
-        <TextView
-            android:id="@+id/userSkillsCaption"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="@string/user_skills_caption"
-            android:textColor="@color/on_surface_variant"
-            android:textSize="11sp"
-            android:letterSpacing="0.04"
+            android:layout_height="2dp"
+            android:max="100"
+            android:progressTint="@color/primary"
+            android:progressBackgroundTint="@color/outline_variant"
             android:visibility="gone" />
 
-        <HorizontalScrollView
-            android:id="@+id/userSkillsScroll"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:scrollbars="none"
-            android:clipToPadding="false"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:id="@+id/userSkillChips"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingVertical="2dp" />
-        </HorizontalScrollView>
-
-        <!-- control row: visibility matrix preserved in AgentPanelController -->
+        <!-- ================= v2.0.0: find in page (inline bar) ================= -->
         <LinearLayout
+            android:id="@+id/findBar"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:orientation="horizontal"
-            android:layout_marginTop="10dp">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnRun"
-                style="@style/Comet.Button"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:text="@string/run_agent"
-                android:textSize="14sp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnRecord"
-                style="@style/Comet.Button.Tonal"
-                android:layout_width="wrap_content"
-                android:layout_height="44dp"
-                android:layout_marginStart="8dp"
-                android:paddingHorizontal="14dp"
-                android:text="@string/record"
-                android:textSize="13sp"
-                app:icon="@drawable/ic_record"
-                app:iconSize="14dp"
-                app:iconGravity="textStart"
-                app:iconPadding="4dp"
-                app:iconTint="@color/danger" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnGrillMe"
-                style="@style/Comet.Button.Outlined"
-                android:layout_width="wrap_content"
-                android:layout_height="44dp"
-                android:layout_marginStart="8dp"
-                android:paddingHorizontal="14dp"
-                android:text="@string/grill_me"
-                android:textSize="13sp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnTakeControl"
-                style="@style/Comet.Button.Tonal"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:text="@string/take_control"
-                android:textSize="13sp"
-                android:visibility="gone" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnResume"
-                style="@style/Comet.Button.Tonal"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:text="@string/resume"
-                android:textSize="13sp"
-                android:visibility="gone" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnStop"
-                style="@style/Comet.Button.Danger"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:text="@string/stop"
-                android:textSize="13sp"
-                android:visibility="gone" />
-        </LinearLayout>
-
-        <!-- v1.8.0: hand the task to the background engine (isolated headless
-             browser + foreground service; progress lives in the notification) -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnRunBackground"
-            style="@style/Comet.Button.Outlined"
-            android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:layout_marginTop="6dp"
-            android:text="@string/run_background"
-            android:textSize="13sp"
-            android:visibility="gone" />
-
-        <!-- v1.8.0: live monitor for the background task while the app is open.
-             The authoritative control surface is the notification shade. -->
-        <LinearLayout
-            android:id="@+id/backgroundCard"
-            android:background="@drawable/bg_card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginTop="8dp"
-            android:padding="12dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="8dp"
+            android:background="@color/surface"
             android:visibility="gone">
 
-            <TextView
-                android:id="@+id/backgroundTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/bg_card_title"
-                android:textColor="@color/primary"
-                android:textSize="13sp"
-                android:textStyle="bold" />
+            <EditText
+                android:id="@+id/findInput"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:paddingHorizontal="12dp"
+                android:background="@drawable/bg_panel_input"
+                android:hint="@string/find_hint"
+                android:textColorHint="@color/on_surface_variant"
+                android:textColor="@color/on_surface"
+                android:textSize="14sp"
+                android:inputType="text"
+                android:imeOptions="actionNext"
+                android:maxLines="1" />
 
             <TextView
-                android:id="@+id/backgroundStatus"
-                android:layout_width="match_parent"
+                android:id="@+id/findCount"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginHorizontal="8dp"
+                android:text="@string/find_count_zero"
                 android:textColor="@color/on_surface_variant"
                 android:textSize="12sp" />
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnBgStop"
-                style="@style/Comet.Button.Danger"
-                android:layout_width="match_parent"
-                android:layout_height="36dp"
-                android:layout_marginTop="6dp"
-                android:text="@string/bg_card_stop"
-                android:textSize="12sp" />
+                android:id="@+id/btnFindPrev"
+                style="@style/Comet.Button.Icon"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:contentDescription="@string/find_prev"
+                app:icon="@drawable/ic_expand_less" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFindNext"
+                style="@style/Comet.Button.Icon"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:contentDescription="@string/find_next"
+                app:icon="@drawable/ic_expand_more" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFindClose"
+                style="@style/Comet.Button.Icon"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:contentDescription="@string/cd_close_tab"
+                app:icon="@drawable/ic_close" />
         </LinearLayout>
 
-        <!-- run summary (v1.5.0): steps · est. tokens · duration · outcome -->
-        <TextView
-            android:id="@+id/statsText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:paddingHorizontal="4dp"
-            android:textColor="@color/on_surface_variant"
-            android:textSize="12sp"
-            android:singleLine="true"
-            android:visibility="gone" />
-
-        <!-- ask-user / interview answer row -->
+        <!-- ================= Challenge banner (warningContainer tonal) ================= -->
         <LinearLayout
-            android:id="@+id/answerRow"
+            android:id="@+id/challengeBanner"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginTop="8dp"
+            android:layout_marginHorizontal="8dp"
+            android:layout_marginTop="6dp"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:background="@drawable/bg_banner"
             android:visibility="gone">
 
-            <EditText
-                android:id="@+id/answerInput"
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:importantForAccessibility="no"
+                app:srcCompat="@drawable/ic_warning"
+                app:tint="@color/on_warning_container" />
+
+            <TextView
+                android:id="@+id/challengeText"
                 android:layout_width="0dp"
-                android:layout_height="44dp"
+                android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:paddingHorizontal="12dp"
+                android:layout_marginHorizontal="8dp"
+                android:text="@string/challenge_default"
+                android:textColor="@color/on_warning_container"
+                android:textSize="13sp"
+                android:maxLines="2" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnChallengeTake"
+                style="@style/Comet.Button.Compact"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="@string/take_control"
+                android:textColor="@color/on_warning_container" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnChallengeResume"
+                style="@style/Comet.Button.Compact"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="4dp"
+                android:text="@string/resume"
+                android:textColor="@color/on_warning_container" />
+        </LinearLayout>
+
+        <!-- ================= Web container (v2.0.0: pull-to-refresh aware) ===== -->
+        <com.cometx.browser.ui.BrowserSwipeLayout
+            android:id="@+id/swipe"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <FrameLayout
+                android:id="@+id/webContainer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </com.cometx.browser.ui.BrowserSwipeLayout>
+
+        <!-- ================= Ask Agent bar (the one floating pill) ================= -->
+        <LinearLayout
+            android:id="@+id/askBar"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginHorizontal="12dp"
+            android:layout_marginBottom="12dp"
+            android:paddingHorizontal="16dp"
+            android:background="@drawable/bg_askbar"
+            android:elevation="2dp"
+            android:foreground="?android:attr/selectableItemBackground">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:importantForAccessibility="no"
+                app:srcCompat="@drawable/ic_auto_awesome"
+                app:tint="@color/accent" />
+
+            <TextView
+                android:id="@+id/askBarText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:text="@string/ask_agent"
+                android:textColor="@color/on_surface_variant"
+                android:textSize="14sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOpenAgent"
+                style="@style/Comet.Button.Compact"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:text="@string/open"
+                android:textColor="@color/primary" />
+        </LinearLayout>
+
+        <!-- ================= Agent panel (pseudo-sheet, 28dp top corners) ================= -->
+        <LinearLayout
+            android:id="@+id/agentPanel"
+            android:layout_width="match_parent"
+            android:layout_height="340dp"
+            android:orientation="vertical"
+            android:background="@drawable/bg_agent_panel"
+            android:elevation="8dp"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="12dp"
+            android:visibility="gone">
+
+            <!-- decorative drag handle -->
+            <View
+                android:layout_width="24dp"
+                android:layout_height="4dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="6dp"
+                android:background="@drawable/bg_drag_handle" />
+
+            <!-- header: state dot + status + step counter + collapse -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <View
+                    android:id="@+id/statusDot"
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:background="@drawable/bg_status_dot" />
+
+                <TextView
+                    android:id="@+id/statusText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="10dp"
+                    android:text="@string/agent_idle"
+                    android:textColor="@color/on_surface"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/stepText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:textColor="@color/on_surface_variant"
+                    android:textSize="12sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPanelClose"
+                    style="@style/Comet.Button.Icon"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:contentDescription="@string/cd_collapse"
+                    app:icon="@drawable/ic_keyboard_arrow_down" />
+            </LinearLayout>
+
+            <EditText
+                android:id="@+id/goalInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:padding="12dp"
                 android:background="@drawable/bg_panel_input"
-                android:hint="@string/your_answer"
+                android:hint="@string/goal_hint"
                 android:textColorHint="@color/on_surface_variant"
                 android:textColor="@color/on_surface"
                 android:textSize="14sp"
-                android:singleLine="true" />
+                android:minLines="2"
+                android:maxLines="4"
+                android:inputType="textMultiLine|textCapSentences" />
+
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:scrollbars="none"
+                android:clipToPadding="false">
+
+                <LinearLayout
+                    android:id="@+id/skillChips"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingVertical="2dp" />
+            </HorizontalScrollView>
+
+            <TextView
+                android:id="@+id/userSkillsCaption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/user_skills_caption"
+                android:textColor="@color/on_surface_variant"
+                android:textSize="11sp"
+                android:letterSpacing="0.04"
+                android:visibility="gone" />
+
+            <HorizontalScrollView
+                android:id="@+id/userSkillsScroll"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:scrollbars="none"
+                android:clipToPadding="false"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/userSkillChips"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingVertical="2dp" />
+            </HorizontalScrollView>
+
+            <!-- control row: visibility matrix preserved in AgentPanelController -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="10dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnRun"
+                    style="@style/Comet.Button"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:text="@string/run_agent"
+                    android:textSize="14sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnRecord"
+                    style="@style/Comet.Button.Tonal"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="8dp"
+                    android:paddingHorizontal="14dp"
+                    android:text="@string/record"
+                    android:textSize="13sp"
+                    app:icon="@drawable/ic_record"
+                    app:iconSize="14dp"
+                    app:iconGravity="textStart"
+                    app:iconPadding="4dp"
+                    app:iconTint="@color/danger" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnGrillMe"
+                    style="@style/Comet.Button.Outlined"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="8dp"
+                    android:paddingHorizontal="14dp"
+                    android:text="@string/grill_me"
+                    android:textSize="13sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnTakeControl"
+                    style="@style/Comet.Button.Tonal"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/take_control"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnResume"
+                    style="@style/Comet.Button.Tonal"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/resume"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnStop"
+                    style="@style/Comet.Button.Danger"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/stop"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <!-- v1.8.0: hand the task to the background engine (isolated headless
+                 browser + foreground service; progress lives in the notification) -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRunBackground"
+                style="@style/Comet.Button.Outlined"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_marginTop="6dp"
+                android:text="@string/run_background"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <!-- v1.8.0: live monitor for the background task while the app is open.
+                 The authoritative control surface is the notification shade. -->
+            <LinearLayout
+                android:id="@+id/backgroundCard"
+                android:background="@drawable/bg_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="8dp"
+                android:padding="12dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/backgroundTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/bg_card_title"
+                    android:textColor="@color/primary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/backgroundStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/on_surface_variant"
+                    android:textSize="12sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnBgStop"
+                    style="@style/Comet.Button.Danger"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/bg_card_stop"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- run summary (v1.5.0): steps · est. tokens · duration · outcome -->
+            <TextView
+                android:id="@+id/statsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:paddingHorizontal="4dp"
+                android:textColor="@color/on_surface_variant"
+                android:textSize="12sp"
+                android:singleLine="true"
+                android:visibility="gone" />
+
+            <!-- ask-user / interview answer row -->
+            <LinearLayout
+                android:id="@+id/answerRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="8dp"
+                android:visibility="gone">
+
+                <EditText
+                    android:id="@+id/answerInput"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:paddingHorizontal="12dp"
+                    android:background="@drawable/bg_panel_input"
+                    android:hint="@string/your_answer"
+                    android:textColorHint="@color/on_surface_variant"
+                    android:textColor="@color/on_surface"
+                    android:textSize="14sp"
+                    android:singleLine="true" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnAnswerSend"
+                    style="@style/Comet.Button.Send"
+                    android:layout_width="48dp"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="8dp"
+                    android:contentDescription="@string/cd_send"
+                    app:icon="@drawable/ic_send" />
+            </LinearLayout>
+
+            <ListView
+                android:id="@+id/logList"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="8dp"
+                android:divider="@color/outline_variant"
+                android:dividerHeight="1dp"
+                android:scrollbars="none"
+                android:stackFromBottom="true"
+                android:transcriptMode="normal" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ================= v2.0.0: Material tab switcher (full-screen overlay) ==== -->
+    <LinearLayout
+        android:id="@+id/tabSwitcher"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="@color/background"
+        android:elevation="12dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="14dp"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:id="@+id/tabCount"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/tabs_title"
+                android:textColor="@color/on_surface"
+                android:textSize="20sp"
+                android:textStyle="bold" />
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnAnswerSend"
-                style="@style/Comet.Button.Send"
-                android:layout_width="48dp"
+                android:id="@+id/btnCloseAllTabs"
+                style="@style/Comet.Button.Text"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="@string/close_all"
+                android:textColor="@color/danger" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSwitcherClose"
+                style="@style/Comet.Button.Icon"
+                android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:layout_marginStart="8dp"
-                android:contentDescription="@string/cd_send"
-                app:icon="@drawable/ic_send" />
+                android:contentDescription="@string/cd_close_switcher"
+                app:icon="@drawable/ic_close" />
         </LinearLayout>
 
-        <ListView
-            android:id="@+id/logList"
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/tabsGrid"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="8dp"
-            android:divider="@color/outline_variant"
-            android:dividerHeight="1dp"
-            android:scrollbars="none"
-            android:stackFromBottom="true"
-            android:transcriptMode="normal" />
+            android:clipToPadding="false"
+            android:paddingHorizontal="12dp"
+            android:scrollbars="vertical" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:padding="12dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnNewIncognito"
+                style="@style/Comet.Button.Outlined"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:text="@string/menu_new_incognito"
+                app:icon="@drawable/ic_incognito"
+                app:iconGravity="textStart"
+                app:iconSize="18dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnNewTab"
+                style="@style/Comet.Button"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:text="@string/new_tab"
+                app:icon="@drawable/ic_add"
+                app:iconGravity="textStart"
+                app:iconSize="18dp" />
+        </LinearLayout>
     </LinearLayout>
-</LinearLayout>
+</FrameLayout>

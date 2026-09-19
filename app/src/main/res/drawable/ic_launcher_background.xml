@@ -1,5 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <gradient android:type="linear" android:angle="315"
-        android:startColor="#141826" android:endColor="#0E1116" />
-</shape>
+<!--
+  Comet-X v2.0.0 launcher background — deep space: indigo radial glow behind
+  the comet head falling to near-black corners, with a sparse fixed star field.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="66"
+                android:centerY="40"
+                android:gradientRadius="86"
+                android:startColor="#311B63"
+                android:centerColor="#1B1036"
+                android:endColor="#0B0718" />
+        </aapt:attr>
+    </path>
+    <!-- star field (fixed positions, calm) -->
+    <path android:fillColor="#66FFFFFF" android:pathData="M20,24m-1.1,0a1.1,1.1 0 1,1 2.2,0a1.1,1.1 0 1,1 -2.2,0" />
+    <path android:fillColor="#4DFFFFFF" android:pathData="M88,18m-0.9,0a0.9,0.9 0 1,1 1.8,0a0.9,0.9 0 1,1 -1.8,0" />
+    <path android:fillColor="#59FFFFFF" android:pathData="M94,62m-1.2,0a1.2,1.2 0 1,1 2.4,0a1.2,1.2 0 1,1 -2.4,0" />
+    <path android:fillColor="#40FFFFFF" android:pathData="M14,64m-0.8,0a0.8,0.8 0 1,1 1.6,0a0.8,0.8 0 1,1 -1.6,0" />
+    <path android:fillColor="#66FFFFFF" android:pathData="M38,88m-1.0,0a1.0,1.0 0 1,1 2.0,0a1.0,1.0 0 1,1 -2.0,0" />
+    <path android:fillColor="#4DFFFFFF" android:pathData="M72,92m-0.9,0a0.9,0.9 0 1,1 1.8,0a0.9,0.9 0 1,1 -1.8,0" />
+    <path android:fillColor="#59FFFFFF" android:pathData="M50,16m-1.0,0a1.0,1.0 0 1,1 2.0,0a1.0,1.0 0 1,1 -2.0,0" />
+</vector>

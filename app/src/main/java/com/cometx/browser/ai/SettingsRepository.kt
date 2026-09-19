@@ -217,4 +217,105 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
     /** Port of the embedded local test-page server; 0 = disabled. */
     fun testServerPort(): Int = prefs.getInt("test_server_port", 0)
     fun setTestServerPort(port: Int) = prefs.edit().putInt("test_server_port", port).apply()
+
+    // ---------- Browsing & privacy (v2.0.0, additive) ----------
+    // Defaults are privacy-first; every getter tolerates a missing key so old
+    // installs keep working. Keys are NEW — no F-11 key is renamed or removed.
+
+    /** Network-level ad/tracker blocking (hosts list + URL pattern rules). */
+    fun blockAds(): Boolean = prefs.getBoolean("block_ads", true)
+    fun setBlockAds(v: Boolean) = prefs.edit().putBoolean("block_ads", v).apply()
+
+    /** Cosmetic (element-hiding) filtering. */
+    fun blockCosmetic(): Boolean = prefs.getBoolean("block_cosmetic", true)
+    fun setBlockCosmetic(v: Boolean) = prefs.edit().putBoolean("block_cosmetic", v).apply()
+
+    /** YouTube ad suppression (prune-before-load + auto-skip). */
+    fun youtubeSuppress(): Boolean = prefs.getBoolean("youtube_suppress", true)
+    fun setYoutubeSuppress(v: Boolean) = prefs.edit().putBoolean("youtube_suppress", v).apply()
+
+    /** DNT + Sec-GPC headers on main-frame navigations. */
+    fun privacyHeaders(): Boolean = prefs.getBoolean("privacy_headers", true)
+    fun setPrivacyHeaders(v: Boolean) = prefs.edit().putBoolean("privacy_headers", v).apply()
+
+    /** HTTPS-first main-frame upgrades (local hosts skipped). */
+    fun httpsUpgrade(): Boolean = prefs.getBoolean("https_upgrade", true)
+    fun setHttpsUpgrade(v: Boolean) = prefs.edit().putBoolean("https_upgrade", v).apply()
+
+    /** First-party cookies (third-party governed by thirdPartyCookies()). */
+    fun cookiesEnabled(): Boolean = prefs.getBoolean("cookies", true)
+    fun setCookiesEnabled(v: Boolean) = prefs.edit().putBoolean("cookies", v).apply()
+
+    /** Media autoplay without a user gesture (default OFF). */
+    fun mediaAutoplay(): Boolean = prefs.getBoolean("media_autoplay", false)
+    fun setMediaAutoplay(v: Boolean) = prefs.edit().putBoolean("media_autoplay", v).apply()
+
+    /** Pull-to-refresh gesture. */
+    fun pullToRefresh(): Boolean = prefs.getBoolean("pull_to_refresh", true)
+    fun setPullToRefresh(v: Boolean) = prefs.edit().putBoolean("pull_to_refresh", v).apply()
+
+    /** Force-enable zoom (viewport rewrite at document start). */
+    fun forceZoom(): Boolean = prefs.getBoolean("force_zoom", false)
+    fun setForceZoom(v: Boolean) = prefs.edit().putBoolean("force_zoom", v).apply()
+
+    /** Web text zoom percent (WebSettings.setTextZoom); clamped 50..200. */
+    fun textZoom(): Int = prefs.getInt("text_zoom", 100)
+    fun setTextZoom(v: Int) = prefs.edit().putInt("text_zoom", v.coerceIn(50, 200)).apply()
+
+    /** Selected search engine: index into SearchEngines.allEngines() (0 = Google). */
+    fun searchEngine(): Int = prefs.getInt("search_engine", 0)
+    fun setSearchEngine(v: Int) = prefs.edit().putInt("search_engine", v).apply()
+
+    /** Custom search engines JSON (SearchEngines format). */
+    fun customEngines(): String = prefs.getString("custom_engines", "") ?: ""
+    fun setCustomEngines(v: String) = prefs.edit().putString("custom_engines", v).apply()
+
+    /** Start-page shortcut tiles JSON ({"name","url"} array; empty = automatic). */
+    fun homeTiles(): String = prefs.getString("home_tiles", "") ?: ""
+    fun setHomeTiles(v: String) = prefs.edit().putString("home_tiles", v).apply()
+
+    /** App theme: 0 system, 1 light, 2 dark. */
+    fun appTheme(): Int = prefs.getInt("app_theme", 0)
+    fun setAppTheme(v: Int) = prefs.edit().putInt("app_theme", v.coerceIn(0, 2)).apply()
+
+    /** Material You dynamic color (Android 12+); fallback is the Comet palette. */
+    fun materialYou(): Boolean = prefs.getBoolean("material_you", true)
+    fun setMaterialYou(v: Boolean) = prefs.edit().putBoolean("material_you", v).apply()
+
+    /** Algorithmic darkening for web content (WebView algorithmic theme). */
+    fun webForceDark(): Boolean = prefs.getBoolean("web_force_dark", false)
+    fun setWebForceDark(v: Boolean) = prefs.edit().putBoolean("web_force_dark", v).apply()
+
+    /** Weekly automatic filter-list refresh. */
+    fun autoUpdateLists(): Boolean = prefs.getBoolean("auto_update_lists", true)
+    fun setAutoUpdateLists(v: Boolean) = prefs.edit().putBoolean("auto_update_lists", v).apply()
+
+    /** Last successful filter-list update (ms epoch; 0 = never). */
+    fun listLastUpdate(): Long = prefs.getLong("list_last_update", 0L)
+    fun setListLastUpdate(v: Long) = prefs.edit().putLong("list_last_update", v).apply()
+
+    /** Per-site blocking exemption: newline separated hosts. */
+    fun allowlist(): String = prefs.getString("blocking_allowlist", "") ?: ""
+    fun setAllowlist(v: String) = prefs.edit().putString("blocking_allowlist", v ?: "").apply()
+
+    /** All-time blocked-request counter (feed the stat card + security dialog). */
+    fun totalBlocked(): Long = prefs.getLong("total_blocked", 0L)
+    fun addTotalBlocked(n: Long) {
+        if (n <= 0) return
+        prefs.edit().putLong("total_blocked", totalBlocked() + n).apply()
+    }
+
+    fun resetTotalBlocked() = prefs.edit().putLong("total_blocked", 0L).apply()
+
+    /** Restored session: "||"-separated non-incognito tab URLs + current index. */
+    fun savedTabs(): String = prefs.getString("saved_tabs", "") ?: ""
+    fun setSavedTabs(v: String) = prefs.edit().putString("saved_tabs", v ?: "").apply()
+    fun savedTabIndex(): Int = prefs.getInt("saved_tab_index", 0)
+    fun setSavedTabIndex(v: Int) = prefs.edit().putInt("saved_tab_index", v).apply()
+
+    /** True when the user picked a homepage other than the untouched default. */
+    fun hasCustomHomepage(): Boolean {
+        val v = prefs.getString("homepage", null) ?: return false
+        return v.isNotBlank() && v != "https://www.google.com"
+    }
 }

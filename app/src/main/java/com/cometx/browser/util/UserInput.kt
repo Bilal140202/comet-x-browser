@@ -14,13 +14,28 @@ import java.net.URLEncoder
  */
 object UserInput {
 
-    fun resolve(raw: String): String {
+    private const val DEFAULT_TEMPLATE = "https://www.google.com/search?q=%s"
+
+    fun resolve(raw: String): String = resolve(raw, null)
+
+    /**
+     * v2.0.0: optional search-engine template. `null`/blank keeps the exact
+     * v1.x behavior (Google search) so every existing caller and test is
+     * preserved byte-for-byte; a template from SearchEngines replaces the
+     * Google query URL for search terms only (URL-looking input is unchanged).
+     * `about:home` / `cometx://home` pass through for the start page.
+     */
+    fun resolve(raw: String, searchTemplate: String?): String {
         val input = raw.trim()
         return when {
             input.isEmpty() -> ""
             input.startsWith("http://") || input.startsWith("https://") -> input
-            input.contains(" ") || !input.contains(".") ->
-                "https://www.google.com/search?q=" + encodeQuery(input)
+            input == "about:home" || input == "cometx://home" -> input
+            input.contains(" ") || !input.contains(".") -> {
+                val template = searchTemplate?.takeIf { it.isNotBlank() && it.contains("%s") }
+                    ?: DEFAULT_TEMPLATE
+                template.replace("%s", encodeQuery(input))
+            }
             else -> "https://$input"
         }
     }
