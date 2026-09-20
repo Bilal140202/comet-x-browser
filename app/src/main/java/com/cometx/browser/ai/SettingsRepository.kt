@@ -21,10 +21,9 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
         context.getSharedPreferences("cometx_settings", Context.MODE_PRIVATE)
 
     companion object {
-        // v2.2.0: "nvidia" (NVIDIA NIM, build.nvidia.com) appended to the cloud
-        // set — verified live with a real nvapi-… key (models + completion).
-        // Stored chain orders from older installs are auto-extended by
-        // chainOrder() (missing ids are appended), nothing destructive.
+        // v2.2.0: "nvidia" joins the chain ADDITIVELY (position after openrouter).
+        // chainOrder() appends it to stored orders from older installs, so no
+        // migration is needed and pre-2.2.0 behavior is preserved when unused.
         val ALL_PROVIDERS = listOf("groq", "openrouter", "nvidia", "huggingface", "custom")
 
         /** v1.6.0: the on-device llama.cpp provider lives OUTSIDE ALL_PROVIDERS —
@@ -44,7 +43,6 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
     fun providerEnabled(id: String): Boolean =
         prefs.getBoolean("prov_enabled_$id", id == "groq" || id == "openrouter")
 
-
     fun setProviderEnabled(id: String, enabled: Boolean) =
         prefs.edit().putBoolean("prov_enabled_$id", enabled).apply()
 
@@ -58,7 +56,7 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
             val ids = (0 until arr.length()).mapNotNull { i ->
                 val s = arr.optString(i); s.takeIf { it in ALL_PROVIDERS }
             }.distinct()
-            // append any provider missing from stored order
+            // append any provider missing from stored order (v2.2.0: "nvidia")
             ids + (ALL_PROVIDERS.filter { it !in ids })
         } catch (_: Exception) {
             listOf("groq", "openrouter", "nvidia", "huggingface", "custom")
@@ -106,25 +104,26 @@ open class SettingsRepository(context: Context, private val secure: SecureStore)
     fun setBaseUrl(id: String, url: String?) =
         prefs.edit().putString("baseurl_$id", url?.takeIf { it.isNotBlank() }).apply()
 
-    // ---------- Discord agent monitor (v2.2.0) ----------
+    // ---------- Discord agent-results push (v2.2.0, additive) ----------
+    // The bot token lives in SecureStore (same protection as provider keys);
+    // the channel id is not a secret and lives in plain prefs.
 
-    /** ADDITIVE: mirrors background-agent task events to a Discord channel.
-     *  Disabled by default → v2.1.0 behavior unchanged. */
+    /** Push a result embed when a background agent task reaches COMPLETED/FAILED. */
     fun discordEnabled(): Boolean = prefs.getBoolean("discord_enabled", false)
     fun setDiscordEnabled(v: Boolean) = prefs.edit().putBoolean("discord_enabled", v).apply()
 
-    /** Not a secret (channel ids are not sensitive alone) — plain prefs. */
-    fun discordChannelId(): String? =
-        prefs.getString("discord_channel_id", null)?.takeIf { it.isNotBlank() }
-    fun setDiscordChannelId(v: String?) =
-        prefs.edit().putString("discord_channel_id", v?.trim()?.takeIf { it.isNotBlank() }).apply()
+    fun discordChannelId(): String = prefs.getString("discord_channel_id", "") ?: ""
+    fun setDiscordChannelId(v: String) =
+        prefs.edit().putString("discord_channel_id", v.trim().takeIf { it.isNotBlank() } ?: "").apply()
 
-    /** SECRET — Keystore-encrypted via SecureStore, same as provider keys. */
-    open fun discordBotToken(): String? = secure.getString("discord_bot_token")
-    fun setDiscordBotToken(v: String) {
-        val t = v.trim()
-        if (t.isBlank()) secure.remove("discord_bot_token") else secure.putString("discord_bot_token", t)
+    open fun discordToken(): String? = secure.getString("discord_bot_token")
+    fun setDiscordToken(token: String) {
+        if (token.isBlank()) secure.remove("discord_bot_token")
+        else secure.putString("discord_bot_token", token.trim())
     }
+
+    fun discordConfigured(): Boolean =
+        discordEnabled() && !discordToken().isNullOrBlank() && discordChannelId().isNotBlank()
 
     // ---------- Model routing ----------
 

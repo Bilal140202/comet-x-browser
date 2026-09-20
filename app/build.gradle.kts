@@ -95,6 +95,15 @@ android {
         }
     }
 
+    // v2.2.0: Jetpack Compose for the Cloud AI center (Material 3 expressive UI).
+    buildFeatures {
+        compose = true
+    }
+    composeOptions {
+        // pinned to the compiler build for Kotlin 1.9.24
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -133,6 +142,15 @@ dependencies {
     // Dependency decision record: docs/ui/COMET_UI_CURRENT_STATE.md §8
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
+
+    // v2.2.0: Jetpack Compose + Material 3 (Cloud AI center). BOM keeps the
+    // compose artifact set consistent; compiler ext pinned to Kotlin 1.9.24.
+    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.activity:activity-compose:1.9.0")
 
     // v2.0.0 full-browser layer (ported from the Zerium codebase):
     // document-start scripting + algorithmic darkening (webkit), tab grid

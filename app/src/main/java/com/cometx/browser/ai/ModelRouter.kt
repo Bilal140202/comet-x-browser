@@ -79,6 +79,15 @@ class ModelRouter(
                     Role.AGENT to "meta-llama/llama-3.3-70b-instruct:free",
                     Role.VISION to "meta-llama/llama-4-scout:free"
                 )
+                // v2.2.0: ids verified present in the live NVIDIA catalog 2026-09-20
+                "nvidia" -> mapOf(
+                    Role.FAST to "google/gemma-3-4b-it",
+                    Role.CHEAP to "google/gemma-3-4b-it",
+                    Role.REASONING to "openai/gpt-oss-20b",
+                    Role.STRONG to "openai/gpt-oss-20b",
+                    Role.AGENT to "openai/gpt-oss-20b",
+                    Role.VISION to "meta/llama-3.2-11b-vision-instruct"
+                )
                 "huggingface" -> mapOf(
                     Role.FAST to "meta-llama/Llama-3.1-8B-Instruct",
                     Role.CHEAP to "meta-llama/Llama-3.1-8B-Instruct",

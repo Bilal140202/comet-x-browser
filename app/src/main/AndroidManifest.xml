@@ -67,6 +67,15 @@
             android:label="@string/settings_title"
             android:parentActivityName=".ui.MainActivity" />
 
+        <!-- v2.2.0: Cloud AI center — the app's first Jetpack Compose / Material 3
+             screen (provider keys, live tests, chain order, Discord push). -->
+        <activity
+            android:name=".ui.cloud.CloudAiActivity"
+            android:exported="false"
+            android:configChanges="uiMode"
+            android:label="Cloud AI"
+            android:parentActivityName=".ui.SettingsActivity" />
+
         <!-- v2.0.0 full-browser layer: bookmarks / history / downloads screens -->
         <activity
             android:name=".ui.BookmarksActivity"

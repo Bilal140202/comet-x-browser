@@ -65,9 +65,6 @@ class AgentTaskService : Service(), AgentEngine.Listener {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var lastNotifyAt = 0L
 
-    /** v2.2.0: guards against double final Discord posts (stopTask + engine callback). */
-    private var finalMirrored = false
-
     // ------------------------------------------------------------- lifecycle
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -198,12 +195,6 @@ class AgentTaskService : Service(), AgentEngine.Listener {
         store.start(goal)
         postNotificationNow()
 
-        // v2.2.0 ADDITIVE: mirror the start event to Discord (no-op when the
-        // Discord monitor is disabled/unconfigured — v2.1.0 path untouched)
-        store.current?.let {
-            DiscordNotifier.mirrorAsync(scope, st, it, DiscordNotifier.Event.STARTED, goal, force = true)
-        }
-
         // -- keep the CPU alive so deep sleep never stalls the task ------------
         acquireWakeLock()
 
@@ -296,20 +287,11 @@ class AgentTaskService : Service(), AgentEngine.Listener {
         ) {
             store.finish(mapped, message)
             postFinal(store.current ?: return)
-            // v2.2.0 ADDITIVE: final event to Discord (deduped — stopTask and
-            // the engine callback can both land here)
-            if (!finalMirrored) {
-                finalMirrored = true
-                val st = settings
-                store.current?.let { rec ->
-                    val ev = when (mapped) {
-                        BackgroundAgentStore.STATE_COMPLETED -> DiscordNotifier.Event.FINISHED_OK
-                        BackgroundAgentStore.STATE_FAILED -> DiscordNotifier.Event.FINISHED_FAIL
-                        else -> DiscordNotifier.Event.FINISHED_CANCELLED
-                    }
-                    if (st != null) DiscordNotifier.mirrorAsync(scope, st, rec, ev, message, force = true)
-                }
-            }
+            // v2.2.0: optional Discord push (no-op unless the user enabled it;
+            // runs on its own daemon thread — never blocks the terminal path)
+            com.cometx.browser.social.DiscordBridge.onTaskTerminal(
+                applicationContext, store.current
+            )
             releaseWakeLock()
             scheduleStop()
             return
@@ -323,24 +305,10 @@ class AgentTaskService : Service(), AgentEngine.Listener {
         ) {
             store.update { it.copy(state = BackgroundAgentStore.STATE_AWAITING_CHALLENGE) }
             postNotification(force = true)
-            // v2.2.0 ADDITIVE: gates are exactly what a remote monitor wants to see
-            val st = settings
-            store.current?.let {
-                if (st != null) DiscordNotifier.mirrorAsync(scope, st, it, DiscordNotifier.Event.GATE, message, force = true)
-            }
             return
         }
         // gate states MUST hit the shade immediately (action buttons appear)
         postNotification(force = mapped != BackgroundAgentStore.STATE_RUNNING)
-        // v2.2.0 ADDITIVE: confirm/ask_user gates also mirror (force: rare)
-        if (mapped == BackgroundAgentStore.STATE_AWAITING_CONFIRM ||
-            mapped == BackgroundAgentStore.STATE_AWAITING_USER
-        ) {
-            val st = settings
-            store.current?.let {
-                if (st != null) DiscordNotifier.mirrorAsync(scope, st, it, DiscordNotifier.Event.GATE, message, force = true)
-            }
-        }
     }
 
     override fun onLog(line: String, isError: Boolean) {
@@ -353,14 +321,6 @@ class AgentTaskService : Service(), AgentEngine.Listener {
             val used = m.groupValues[1].toIntOrNull() ?: return
             val budget = m.groupValues[2].toIntOrNull() ?: return
             store.setProgress(used, budget, lastActionLine(store))
-            // v2.2.0 ADDITIVE: milestone-only Discord progress (every 5th step
-            // and the final step) — keeps Discord rate limits comfortable
-            if (used % DiscordNotifier.STEP_MILESTONE_EVERY == 0 || used >= budget) {
-                val st = settings
-                store.current?.let {
-                    if (st != null) DiscordNotifier.mirrorAsync(scope, st, it, DiscordNotifier.Event.STEP, lastActionLine(store))
-                }
-            }
         }
         postNotification()
     }
@@ -403,15 +363,6 @@ class AgentTaskService : Service(), AgentEngine.Listener {
         val store = store() ?: return
         store.finish(BackgroundAgentStore.STATE_CANCELLED, reason)
         store.current?.let { postFinal(it) }
-        // v2.2.0 ADDITIVE: user-initiated stop (the engine's own CANCELLED
-        // callback dedupes via finalMirrored)
-        if (!finalMirrored) {
-            finalMirrored = true
-            val st = settings
-            store.current?.let {
-                if (st != null) DiscordNotifier.mirrorAsync(scope, st, it, DiscordNotifier.Event.FINISHED_CANCELLED, reason, force = true)
-            }
-        }
         releaseWakeLock()
         scheduleStop()
     }
