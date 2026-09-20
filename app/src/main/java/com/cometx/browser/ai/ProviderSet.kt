@@ -11,7 +11,8 @@ import com.cometx.browser.CometApp
  * background runs behave differently from foreground runs).
  *
  * Behavior is byte-identical to the v1.7.0 inline construction:
- *   - same four cloud providers + the app-scoped local llama.cpp provider
+ *   - same cloud providers (v2.2.0: + NVIDIA NIM) + the app-scoped local
+ *     llama.cpp provider + the in-browser Transformers.js provider
  *   - keys are read LIVE from settings at call time (never cached here)
  *   - base URLs are applied separately via [applyBaseUrls]
  */
@@ -20,9 +21,8 @@ object ProviderSet {
     fun build(settings: SettingsRepository): Map<String, LlmProvider> = mapOf(
         "groq" to GroqProvider(keyProvider = { settings.apiKey("groq") }),
         "openrouter" to OpenRouterProvider(keyProvider = { settings.apiKey("openrouter") }),
-        // v2.2.0: NVIDIA NIM joins additively — without a key isReady()==false so
-        // it never enters the live chain (byte-identical to v2.1.0 when unused).
-        "nvidia" to NvidiaNimProvider(keyProvider = { settings.apiKey("nvidia") }),
+        // v2.2.0: NVIDIA NIM (verified live — see Providers.kt note)
+        "nvidia" to NvidiaProvider(keyProvider = { settings.apiKey("nvidia") }),
         "huggingface" to HuggingFaceProvider(keyProvider = { settings.apiKey("huggingface") }),
         "custom" to CustomOpenAIProvider(
             keyProvider = { settings.apiKey("custom") },

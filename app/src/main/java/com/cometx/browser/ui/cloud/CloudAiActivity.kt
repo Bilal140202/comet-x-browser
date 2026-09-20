@@ -64,7 +64,7 @@ import com.cometx.browser.ai.GroqProvider
 import com.cometx.browser.ai.HuggingFaceProvider
 import com.cometx.browser.ai.KeyFormat
 import com.cometx.browser.ai.ModelRouter
-import com.cometx.browser.ai.NvidiaNimProvider
+import com.cometx.browser.ai.NvidiaProvider
 import com.cometx.browser.ai.OpenAICompatibleProvider
 import com.cometx.browser.ai.OpenRouterProvider
 import com.cometx.browser.ai.SettingsRepository
@@ -125,7 +125,7 @@ data class ProviderSpec(
 val PROVIDER_SPECS = listOf(
     ProviderSpec(
         "nvidia", "NVIDIA NIM",
-        "build.nvidia.com — 80+ hosted open models (GPT-OSS, Nemotron, Llama, Gemma, Kimi). Free credits with an nvapi- key.",
+        "build.nvidia.com — 80+ hosted open models (GPT-OSS, Nemotron, Llama, Gemma, Kimi). Free developer credits with an nvapi- key. Endpoint + catalog verified live in v2.2.0.",
         "nvapi-…"
     ),
     ProviderSpec(
@@ -153,7 +153,7 @@ val PROVIDER_SPECS = listOf(
 private fun cloudProvider(id: String, settings: SettingsRepository): OpenAICompatibleProvider = when (id) {
     "groq" -> GroqProvider({ settings.apiKey(id) })
     "openrouter" -> OpenRouterProvider({ settings.apiKey(id) })
-    "nvidia" -> NvidiaNimProvider({ settings.apiKey(id) })
+    "nvidia" -> NvidiaProvider({ settings.apiKey(id) })
     "huggingface" -> HuggingFaceProvider({ settings.apiKey(id) })
     else -> CustomOpenAIProvider({ settings.apiKey(id) })
 }

@@ -2,7 +2,6 @@
 
 package com.cometx.browser.ui.cloud
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,19 +35,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.cometx.browser.ai.HttpTransport
 import com.cometx.browser.ai.KeyFormat
 import com.cometx.browser.ai.SettingsRepository
-import com.cometx.browser.social.DiscordApi
-import com.cometx.browser.social.DiscordNotifier
+import com.cometx.browser.background.DiscordNotifier
+import com.cometx.browser.util.Http
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 /**
- * Discord card (v2.2.0) — Compose/Material 3 section of the Cloud AI center.
- * The user pastes their OWN bot token + a channel id; when enabled, finished
- * background-agent tasks are pushed as one embed per task. All REST paths here
- * were verified against the live Discord API (see class doc of DiscordApi).
+ * Discord card (v2.3.0) — the Compose/Material 3 face of the v2.2.0 Discord
+ * agent monitor (backend: `background/DiscordNotifier`, contracts DM-1..DM-6).
+ * The user pastes their OWN bot token + a channel id; background-agent task
+ * events then mirror into that channel. All REST paths were verified against
+ * the live Discord API before shipping (see docs/ai/CLOUD_AI.md).
+ *
+ * This card only ADDS a second UI on the same settings keys — the legacy XML
+ * section stays authoritative and both stay consistent by construction.
  */
 @Composable
 fun DiscordCard(settings: SettingsRepository, onOpenGuide: () -> Unit) {
@@ -56,14 +61,23 @@ fun DiscordCard(settings: SettingsRepository, onOpenGuide: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     val enabled = remember { mutableStateOf(settings.discordEnabled()) }
-    val channelId = remember { mutableStateOf(settings.discordChannelId()) }
+    val channelId = remember { mutableStateOf(settings.discordChannelId() ?: "") }
     val tokenInput = remember { mutableStateOf("") }
     val reveal = remember { mutableStateOf(false) }
     val busy = remember { mutableStateOf(false) }
     val status = remember { mutableStateOf("") }
     val statusOk = remember { mutableStateOf<Boolean?>(null) }
     val savedTokenMask = remember {
-        mutableStateOf(settings.discordToken()?.let { KeyFormat.mask(it) } ?: "")
+        mutableStateOf(settings.discordBotToken()?.let { KeyFormat.mask(it) } ?: "")
+    }
+
+    fun statusFor(code: Int): String = when (code) {
+        200, 204 -> "Delivered — agent events will appear in that channel"
+        401 -> "401 — token rejected by Discord (re-paste it)"
+        403 -> "403 — the bot lacks permission in that channel"
+        404 -> "404 — unknown channel id (Developer Mode → Copy Channel ID)"
+        429 -> "429 — rate limited; try again in a moment"
+        else -> "HTTP $code — see docs/ai/CLOUD_AI.md"
     }
 
     ElevatedCard(
@@ -81,8 +95,7 @@ fun DiscordCard(settings: SettingsRepository, onOpenGuide: () -> Unit) {
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        "Post a result embed to one of your channels when a background task finishes. " +
-                            "Uses your own bot (REST only — one small message per task).",
+                        "Watch background tasks from any device: start, step milestones, approval gates and the result land in your channel. The bot never reads messages.",
                         style = MaterialTheme.typography.bodySmall,
                         color = cs.onSurfaceVariant
                     )
@@ -97,25 +110,18 @@ fun DiscordCard(settings: SettingsRepository, onOpenGuide: () -> Unit) {
             }
 
             Spacer(Modifier.height(8.dp))
-            if (savedTokenMask.value.isNotBlank()) {
-                Text(
-                    "Bot token ${savedTokenMask.value}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = cs.onSurface
-                )
-            } else {
-                Text(
-                    "No bot token yet",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = cs.onSurfaceVariant
-                )
-            }
+            Text(
+                if (savedTokenMask.value.isNotBlank()) "Bot token ${savedTokenMask.value}"
+                else "No bot token yet",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (savedTokenMask.value.isNotBlank()) cs.onSurface else cs.onSurfaceVariant
+            )
 
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = tokenInput.value,
                 onValueChange = { tokenInput.value = it },
-                label = { Text("Bot token (Discord Developer Portal → Bot)") },
+                label = { Text("Bot token (discord.com/developers → Bot)") },
                 singleLine = true,
                 visualTransformation = if (reveal.value) VisualTransformation.None
                 else PasswordVisualTransformation(),
@@ -133,7 +139,7 @@ fun DiscordCard(settings: SettingsRepository, onOpenGuide: () -> Unit) {
                     channelId.value = it
                     settings.setDiscordChannelId(it)
                 },
-                label = { Text("Channel ID (right-click a channel → Copy ID)") },
+                label = { Text("Channel ID (right-click channel → Copy ID)") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -148,13 +154,21 @@ fun DiscordCard(settings: SettingsRepository, onOpenGuide: () -> Unit) {
                             val token = tokenInput.value.trim()
                             val res = withContext(Dispatchers.IO) {
                                 if (token.isEmpty()) return@withContext false to "Type a token first"
-                                val (ok, msg) = DiscordApi.validateToken(token)
-                                if (ok) {
-                                    settings.setDiscordToken(token)
+                                val resp = Http.get(
+                                    "${DiscordNotifier.API_BASE}/users/@me",
+                                    mapOf("Authorization" to "Bot $token"), 15_000
+                                )
+                                if (resp.ok) {
+                                    settings.setDiscordBotToken(token)
                                     savedTokenMask.value = KeyFormat.mask(token)
                                     tokenInput.value = ""
+                                    val name = runCatching {
+                                        JSONObject(resp.body).optString("username")
+                                    }.getOrNull()
+                                    true to (name?.takeIf { it.isNotBlank() } ?: "Token saved")
+                                } else {
+                                    false to statusFor(resp.code)
                                 }
-                                ok to msg
                             }
                             statusOk.value = res.first
                             status.value = res.second
@@ -176,9 +190,17 @@ fun DiscordCard(settings: SettingsRepository, onOpenGuide: () -> Unit) {
                         busy.value = true
                         status.value = "Sending…"
                         scope.launch {
-                            val res = withContext(Dispatchers.IO) { DiscordNotifier(settings).sendTest() }
-                            statusOk.value = DiscordNotifier(settings).configured() && !res.startsWith("Save")
-                            status.value = res
+                            val config = DiscordNotifier.configFrom(settings)
+                            val resp = DiscordNotifier.post(
+                                HttpTransport.REAL, config,
+                                DiscordNotifier.buildBody(
+                                    DiscordNotifier.Event.TEST,
+                                    goal = "", detail = "If you can read this, agent events will land here."
+                                )
+                            )
+                            statusOk.value = resp?.ok == true
+                            status.value = resp?.let { statusFor(it.code) }
+                                ?: "Enable the toggle and save token + channel first"
                             busy.value = false
                         }
                     },
@@ -186,7 +208,7 @@ fun DiscordCard(settings: SettingsRepository, onOpenGuide: () -> Unit) {
                 ) {
                     Icon(Icons.Filled.Send, null)
                     Spacer(Modifier.width(6.dp))
-                    Text("Send test embed")
+                    Text("Send test message")
                 }
             }
 
@@ -214,8 +236,8 @@ fun DiscordCard(settings: SettingsRepository, onOpenGuide: () -> Unit) {
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                "The bot must be a member of the channel's server. Comet-X never reads messages — " +
-                    "it only posts results. Push happens for COMPLETED and FAILED background tasks.",
+                "The bot must be a member of the channel's server (Send Messages). " +
+                    "Events are posted to discord.com only; the token is Keystore-encrypted and never logged.",
                 style = MaterialTheme.typography.bodySmall,
                 color = cs.onSurfaceVariant
             )

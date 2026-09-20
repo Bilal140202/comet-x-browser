@@ -426,37 +426,62 @@ WebLlmProtocolTest, TransformersWebProviderTest, WebChainTest).
 remain binding; the local-AI chain semantics of LocalChainTest are unchanged and now
 extended by WebChainTest.
 
----
+# § v2.2.0 ADDENDUM — BYOK CLOUD VERIFICATION + DISCORD AGENT MONITOR
 
-# § v2.2.0 ADDENDUM — OPERATION CLOUD KEYRING (Cloud AI center + NVIDIA NIM + Discord push)
-
-> Full verified endpoints, key shapes and honest limits: `docs/ai/CLOUD_AI.md`.
-> The deliverable: one Material 3 + Jetpack Compose screen where the user pastes
-> PERSONAL API keys; base URLs and model catalogs are pre-configured by the app
-> and were verified against the LIVE services before shipping. Nothing changes
-> for a user who never opens it.
+> Task: user supplied four API keys (NVIDIA NIM, OpenRouter, Discord bot,
+> one unidentified) and asked: identify them, test them for real, then build
+> the placement for users to paste their own. Every preset shipped here was
+> verified with a REAL round-trip before release (see docs/ai/CLOUD_PROVIDERS.md).
 
 ## A. New behavioral contracts (do not break)
 
 | ID | Contract |
 |----|----------|
-| CLD-1 | `NvidiaNimProvider` (id `nvidia`) joins `SettingsRepository.ALL_PROVIDERS` ADDITIVELY between openrouter and huggingface. Stored chain orders from older installs get `nvidia` appended (no migration write); with no key it is `isReady()==false` and the live chain is byte-identical to v2.1.0 |
-| CLD-2 | NVIDIA NIM config is pinned to the LIVE-VERIFIED values (2026-09-20): baseUrl `https://integrate.api.nvidia.com/v1`, Bearer `nvapi-…` key, real completion `openai/gpt-oss-20b` → HTTP 200. The public `/v1/models` catalog shape (id/object/created/owned_by, NO context_length) is normalized with capability HINTS from model-id families (gpt-oss/nemotron/kimi/deepseek/qwen3/glm → REASONING; vision-instruct/vila/fuyu/kosmos/phi-3-vision/neva → VISION); runtime negotiation still gates vision (hints never bypass it) |
-| CLD-3 | NVIDIA-only non-chat endpoints (`nvclip`, `embed`, `retriever`, `parse`, `riva`, `detector`, `guard`, `safety`, `reward`, `deplot`, `diffusion`, `muse`) are excluded from agent selection via `NvidiaNimProvider.isNimChatCapable` (extends, never weakens, the shared blocklist) |
-| CLD-4 | `KeyFormat` (pure JVM) is the single source of truth for key shape warnings (HINTS only — a mismatch warns but still saves, so a provider-side format change can never brick a working config) and display masking (≤8-char prefix + `••••` + last 4). The full key is NEVER rendered, logged, or put in any payload |
-| CLD-5 | Cloud AI center (`ui.cloud.CloudAiActivity`, Compose/Material 3): key input is masked with a reveal toggle, saving routes through `SettingsRepository.setApiKey` → SecureStore (Android Keystore AES-256/GCM) — identical storage to the legacy XML settings, so both UIs stay consistent. "Test connection" = live catalog fetch + tiny completion (ping), result persisted via the pre-existing `lasttest_` record and shown with provider container colors |
-| CLD-6 | The Compose theme honors the existing `material_you` setting: dynamic color on Android 12+ when enabled, comet-violet/deep-space brand fallback otherwise (mirrors values/-night/colors.xml). The activity is registered non-exported, parented to SettingsActivity, and reached via one new Tonal button in the legacy settings (the legacy provider blocks remain the default path) |
-| CLD-7 | Model mode AUTO/MANUAL per provider (incl. `nvidia`) keeps §12/§22 semantics: AUTO is default, MANUAL override stores only the AGENT-role model id, and fetched-catalog chips never auto-select anything |
-| CLD-8 | Discord push (`social/DiscordNotifier` + `DiscordBridge`): REST-only (`/api/v10/users/@me` validate, `/api/v10/channels/{id}/messages` post — both verified live 2026-09-20, embed delivered). Fires ONLY when the user enabled it AND stored a bot token AND a channel id, ONLY for COMPLETED/FAILED background tasks, ONE embed per task, on a daemon thread that swallows every failure (service terminal path never depends on Discord). Token lives in SecureStore; never logged, never in payloads, never in the AI event log |
-| CLD-9 | The Discord bridge must remain OUT of `BackgroundAgentStore` (pure JVM state machine) — the hook lives in `AgentTaskService.onStateChanged` after `finish()` + notification post. CANCELLED/INTERRUPTED states never push |
-| CLD-10 | No real credential may ever enter the repo, tests, or APK. Tests use synthetic shape-valid keys only; live verification happens out-of-band with keys in env files outside the repo (see `docs/ai/CLOUD_AI.md` evidence log) |
+| NV-1 | `NvidiaProvider` (id `nvidia`, `SettingsRepository.ALL_PROVIDERS` position 3) targets the live-verified endpoint `https://integrate.api.nvidia.com/v1` (GET /models + POST /chat/completions verified 200 with a real nvapi-… key). Key shape `nvapi-…` is surfaced in the settings hint (build.nvidia.com → API keys) |
+| NV-2 | NVIDIA catalog discovery is LIVE: the provider never hardcodes model ids beyond tests, because NVIDIA retires catalog entries (verified: a retired id answers 404 "Function … not found", which must surface as `ProviderException(httpCode=404)` — the chain then fails over normally). Reasoning-family ids (deepseek-r1 / gpt-oss / qwen3) gain the REASONING capability hint |
+| NV-3 | Chain adoption is fully additive: old stored `chain_order` values are auto-extended with `nvidia` (existing chainOrder() append rule); `providerEnabled("nvidia")` defaults to false, so v2.1.0 chains are byte-identical until the user tests & enables the provider |
+| DM-1 | The Discord agent monitor is OFF by default and unconfigured: with `discord_enabled=false`, an empty token, or an empty channel id, `DiscordNotifier` performs NO network call and every v2.1.0 path (service, notifications, engine) runs byte-identically |
+| DM-2 | The bot token is a SECRET: stored ONLY through SecureStore (Keystore AES-256/GCM, same vault as provider keys, key `discord_bot_token`); the channel id lives in plain prefs (not a secret). Tokens are never logged, never embedded in messages, never sent anywhere except `https://discord.com/api/v10` |
+| DM-3 | Mirror messages are plain markdown `content` (no embeds), built by pure `DiscordNotifier.buildBody` (unit-tested), capped at 1800 chars (Discord's limit is 2000), endpoint pinned to `POST /channels/{channelId}/messages` with `Authorization: Bot <token>` |
+| DM-4 | Mirror events: task STARTED, milestone STEP progress (every 5th step and the final step — never per-step spam), gates (awaiting confirm / ask_user / challenge) and exactly ONE final event (completed / failed / stopped) deduplicated by `finalMirrored` so `stopTask` and the engine callback can never double-post |
+| DM-5 | Fire-and-forget honesty: a Discord outage, rate limit or invalid token is logged and dropped — it can never delay, fail or alter a task, a notification, or the service. Posts run on Dispatchers.IO with a 15 s timeout and a ≥2.5 s throttle (forced events bypass the throttle, never the config gate) |
+| DM-6 | Settings section "Discord agent monitor" provides bot token (password field) + channel ID + enable toggle + "Send test message" which performs a REAL post and renders the honest outcome per HTTP status (401 invalid token / 403 missing permission / 404 unknown channel / 429 rate limit) |
 
 ## B. Regression gate update
 
-Baseline is now **361 tests / 36 suites** (was 344/35; +1 suite: CloudAiV22Test 17 —
-NVIDIA chain additivity, live-shape catalog normalization, verified chat URL, error
-normalization, key formats/masking, Discord payload purity + no-op guarantees,
-settings roundtrip). `assembleRelease` must produce versionCode 13 / versionName
-2.2.0. Cert SHA-256 `970e0a30…` continuity maintained. All v2.1.0 contracts
-(§ TW-1..11) remain binding; the pre-2.2.0 chain semantics are asserted by
-CloudAiV22Test alongside WebChainTest/LocalChainTest.
+Baseline is now **360 tests / 37 suites** (was 344/35; +2 suites: NvidiaProviderTest 7,
+DiscordNotifierTest 9 — final counts recorded at release build time).
+`assembleRelease` must produce versionCode 13 / versionName 2.2.0. Cert SHA-256
+`970e0a30…` continuity maintained. All v2.0.0/v2.1.0 contracts (§ PF/BLK/PRIV/FEAT/UI/BRAND/TW)
+remain binding; LocalChainTest / WebChainTest chain semantics are unchanged
+(nvidia joins the cloud group only when the user enables and keys it).
+
+---
+
+# § v2.3.0 ADDENDUM — CLOUD AI CENTER (Jetpack Compose / Material 3 Expressive)
+
+> The Compose face of the v2.2.0 BYOK backend. Architecture, evidence log and
+> honest limits: `docs/ai/CLOUD_AI.md`. Nothing here changes agent routing —
+> the Cloud AI center is UI + the same encrypted settings keys.
+
+## A. New behavioral contracts (do not break)
+
+| ID | Contract |
+|----|----------|
+| CLD-1 | The Cloud AI center (`ui.cloud.CloudAiActivity`) is the app's ONLY Jetpack Compose surface, registered non-exported with `configChanges="uiMode"`, reached via one Tonal button in Settings ("Open Cloud AI center (Material 3)"). The legacy XML provider blocks and the Discord monitor section remain the default path and keep their exact behavior — the Compose center is a second UI on the SAME settings keys, never a fork |
+| CLD-2 | The Compose theme honors the existing `material_you` setting: dynamic color on Android 12+ when enabled; brand fallback mirrors values(-night)/colors.xml (comet violet #6D28D9 / #A78BFA on deep-space #FCFBFF / #0E1116). Compose artifacts are pinned: BOM 2024.06.00, compiler ext 1.5.14 (Kotlin 1.9.24) |
+| CLD-3 | Key entry routes through `SettingsRepository.setApiKey` → SecureStore — identical storage to the legacy UI. Keys are rendered masked only (`KeyFormat.mask`: ≤8-char prefix + •••• + last 4) with an explicit reveal toggle; the full key is never rendered, logged, or embedded in any payload |
+| CLD-4 | `KeyFormat.warning` is a HINT layer: shape mismatches warn inline (supporting text) but NEVER block saving — a provider-side key-format change can never brick a working configuration. It stays pure JVM (no Android imports) and is part of the JVM test gate |
+| CLD-5 | "Test connection" = live `/models` catalog fetch + tiny completion (`ping`), executed on Dispatchers.IO through the same `OpenAICompatibleProvider` stack the agent uses, result persisted through the pre-existing `lasttest_` record and displayed with honest provider errors |
+| CLD-6 | Chain reordering writes through the pre-existing `moveInChain`/`chainOrder` API (#N position badge, up/down). Model mode AUTO/MANUAL and the MANUAL AGENT-role override use the §12/§22 keys; fetched-catalog suggestion chips never auto-select anything |
+| CLD-7 | The Compose Discord card is a second face of DM-1..DM-6: same `discord_enabled` / `discord_channel_id` / `discord_bot_token` keys, same `DiscordNotifier.configFrom/post/buildBody` backend, honest per-status outcomes (200/401/403/404/429). It adds only a token VALIDATION call (`GET /users/@me`) that the legacy UI lacks; no message reading, no Gateway, ever |
+| CLD-8 | ModelRouter `defaultModelFor("nvidia")` pins LIVE-VERIFIED ids only (agent/reasoning `openai/gpt-oss-20b`, fast/cheap `google/gemma-3-4b-it`, vision `meta/llama-3.2-11b-vision-instruct`, catalog 2026-09-20) used solely as §33 last-resort fallbacks — live catalog discovery remains the primary path (NV-2 unchanged) |
+| CLD-9 | No real credential may ever enter the repo, tests, or APK. Tests use synthetic shape-valid keys; live verification happens out-of-band with keys in env files outside the repository (evidence log in `docs/ai/CLOUD_AI.md`) |
+
+## B. Regression gate update
+
+Baseline is now **372 tests / 38 suites** (v2.2.0 baseline + CloudAiV22Test 16 —
+chain additivity, verified NVIDIA defaults/URL/error mapping, key formats/masking,
+Discord config readiness). `assembleRelease` must produce versionCode 14 /
+versionName 2.3.0. Cert SHA-256 `970e0a30…` continuity maintained. All v2.2.0
+contracts (§ NV-1..3, DM-1..6) and earlier remain binding.
